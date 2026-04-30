@@ -1,0 +1,38 @@
+x-app: &app
+  build:
+    context: .
+    target: dev
+  image: chore-manager:dev
+  working_dir: /app
+  volumes:
+    - .:/app
+    - chore-venv:/app/.venv
+  environment:
+    PYTHONPATH: /app/src
+    CHORE_DATA_DIR: /app/data
+
+services:
+  run:
+    <<: *app
+    command: ["uv", "run", "python", "-m", "chore_manager"]
+    ports:
+      - "5000:5000"
+
+  test:
+    <<: *app
+    command: ["uv", "run", "pytest"]
+
+  pytest:
+    <<: *app
+    command: ["uv", "run", "pytest", "-xvs"]
+
+  lint:
+    <<: *app
+    command: ["sh", "-c", "uv run ruff check src tests && uv run ruff format --check src tests"]
+
+  format:
+    <<: *app
+    command: ["sh", "-c", "uv run ruff check --fix src tests && uv run ruff format src tests"]
+
+volumes:
+  chore-venv: {}

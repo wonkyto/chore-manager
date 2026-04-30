@@ -1,0 +1,7 @@
+<div id="balance-{{ person_key }}" hx-swap-oob="true" class="text-sm text-slate-600 mt-1">
+  <span class="font-semibold text-emerald-700">{{ available }} pts</span>
+  available
+  {% if pending_pts %}
+  <span class="text-amber-700">({{ pending_pts }} pending)</span>
+  {% endif %}
+</div>

@@ -1,0 +1,28 @@
+people:
+  - key: alice
+    name: Alice
+    role: parent
+    colour: "#4f46e5"
+  - key: bob
+    name: Bob
+    role: child
+    colour: "#10b981"
+
+chores:
+  - key: dishes
+    name: Empty dishwasher
+    points: 5
+    frequency: daily
+    assigned_to: [bob]
+
+  - key: piano
+    name: Piano practice
+    points: 10
+    frequency: weekly
+    days: [mon, wed, fri]
+    assigned_to: [bob]
+
+rewards:
+  - key: screen_30
+    name: 30 minutes screen time
+    cost: 20

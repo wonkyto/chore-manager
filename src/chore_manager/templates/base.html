@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>{{ app_config.app_name }}</title>
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='cow.svg') }}">
+<link rel="icon" type="image/png" sizes="512x512" href="{{ url_for('static', filename='cow-512.png') }}">
+<link rel="apple-touch-icon" sizes="192x192" href="{{ url_for('static', filename='apple-touch-icon-192.png') }}">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="{{ app_config.app_name }}">
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+<script src="{{ url_for('static', filename='htmx.min.js') }}" defer></script>
+<script src="{{ url_for('static', filename='canvas-confetti.min.js') }}" defer></script>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen"
+      hx-headers='{"X-CSRFToken": "{{ csrf_token() }}"}'>
+<div id="fireworks-container" style="position:fixed;inset:0;pointer-events:none;z-index:9999;display:none;"></div>
+{% block content %}{% endblock %}
+<script>
+let fireworksActive = false;
+
+document.body.addEventListener('chore-completed', (e) => {
+  if (window.confetti) {
+    confetti({particleCount: 110, spread: 80, origin: {y: 0.7}});
+  }
+  if (fireworksActive) return;
+  const personKey = e.detail?.personKey;
+  const section = personKey
+    ? document.querySelector(`section[data-person-key="${personKey}"]`)
+    : null;
+  if (section && section.querySelectorAll('[data-task-complete="0"]').length === 0) {
+    launchFireworks();
+  }
+});
+
+function launchFireworks() {
+  if (!window.confetti) return;
+  fireworksActive = true;
+  const colors = ['#ff3333','#ff9900','#ffff00','#00dd77','#33aaff','#cc44ff'];
+  const end = Date.now() + 5500;
+  (function frame() {
+    confetti({particleCount: 7, angle: 60, spread: 58, origin: {x: 0, y: 0.85}, colors, startVelocity: 50, gravity: 0.75});
+    confetti({particleCount: 7, angle: 120, spread: 58, origin: {x: 1, y: 0.85}, colors, startVelocity: 50, gravity: 0.75});
+    confetti({particleCount: 5, angle: 90, spread: 110, origin: {x: 0.5, y: 0.5}, colors, startVelocity: 60, gravity: 0.6});
+    if (Date.now() < end) {
+      requestAnimationFrame(frame);
+    } else {
+      fireworksActive = false;
+    }
+  })();
+}
+
+function choreAutofill(input, personKey) {
+  const list = document.getElementById('task-suggestions');
+  if (!list) return;
+  const opt = Array.from(list.options).find(o => o.value === input.value);
+  if (opt && opt.dataset.points) {
+    const pts = document.getElementById('adhoc-pts-' + personKey);
+    if (pts) pts.value = opt.dataset.points;
+  }
+}
+
+const countdown = document.getElementById('pin-countdown');
+if (countdown) {
+  let secs = parseInt(countdown.textContent, 10);
+  const iv = setInterval(() => {
+    secs--;
+    if (secs <= 0) {
+      clearInterval(iv);
+      location.reload();
+    } else {
+      countdown.textContent = secs;
+    }
+  }, 1000);
+}
+</script>
+</body>
+</html>

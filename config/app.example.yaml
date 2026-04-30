@@ -1,0 +1,5 @@
+app_name: Chore Manager
+timezone: Australia/Sydney
+# parent_pin: "1234"          # plain PIN (hashed automatically not yet supported - see parent_pin_hash)
+# parent_pin_hash: "scrypt:..."  # preferred: hash from werkzeug.security.generate_password_hash
+# pin_timeout_seconds: 60

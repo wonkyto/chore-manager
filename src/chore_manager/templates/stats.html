@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block content %}
+
+<header class="px-4 py-3 bg-white border-b shadow-sm flex items-center gap-3">
+  <a href="{{ url_for('main.index') }}"
+     class="text-slate-400 hover:text-slate-700 p-1 rounded hover:bg-slate-100" aria-label="Back">
+    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+    </svg>
+  </a>
+  <img src="{{ avatar_url(avatar_seed) }}" alt="" class="w-10 h-10 rounded-full border-2 border-white shadow-sm shrink-0" style="border-color: {{ person.colour }}">
+  <div>
+    <h1 class="text-xl font-bold leading-tight">{{ person.name }}</h1>
+    <p class="text-xs text-slate-500">Stats</p>
+  </div>
+</header>
+
+<main class="max-w-2xl mx-auto p-3 space-y-4">
+
+  {# --- Stat cards --- #}
+  <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+
+    <div class="bg-white rounded-xl shadow-sm border p-4 flex flex-col gap-1">
+      <span class="text-xs text-slate-500 font-medium uppercase tracking-wide">Streak</span>
+      <span class="text-3xl font-bold" style="color: {{ person.colour }}">{{ streak }}</span>
+      <span class="text-xs text-slate-400">day{{ 's' if streak != 1 else '' }} in a row</span>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border p-4 flex flex-col gap-1">
+      <span class="text-xs text-slate-500 font-medium uppercase tracking-wide">30-day rate</span>
+      <span class="text-3xl font-bold" style="color: {{ person.colour }}">{{ completion_pct }}%</span>
+      <span class="text-xs text-slate-400">{{ done_30 }} of {{ sched_30 }} chores</span>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border p-4 flex flex-col gap-1">
+      <span class="text-xs text-slate-500 font-medium uppercase tracking-wide">All-time pts</span>
+      <span class="text-3xl font-bold" style="color: {{ person.colour }}">{{ total_pts_alltime }}</span>
+      <span class="text-xs text-slate-400">points earned total</span>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border p-4 flex flex-col gap-1">
+      <span class="text-xs text-slate-500 font-medium uppercase tracking-wide">This week</span>
+      <div class="flex items-end gap-1">
+        <span class="text-3xl font-bold" style="color: {{ person.colour }}">{{ this_week }}</span>
+        {% if last_week > 0 %}
+          {% set diff = this_week - last_week %}
+          {% if diff > 0 %}
+          <span class="text-xs text-emerald-600 font-semibold mb-1">+{{ diff }}</span>
+          {% elif diff < 0 %}
+          <span class="text-xs text-rose-500 font-semibold mb-1">{{ diff }}</span>
+          {% endif %}
+        {% endif %}
+      </div>
+      <span class="text-xs text-slate-400">vs {{ last_week }} last week</span>
+    </div>
+
+  </div>
+
+  {# --- Points bar chart --- #}
+  <div class="bg-white rounded-xl shadow-sm border p-4">
+    <h2 class="text-sm font-semibold text-slate-700 mb-3">Points - last 4 weeks</h2>
+    {% set bar_w = 14 %}
+    {% set gap = 6 %}
+    {% set chart_h = 100 %}
+    {% set label_h = 24 %}
+    {% set total_w = (bar_w + gap) * 28 - gap %}
+    <svg viewBox="0 0 {{ total_w }} {{ chart_h + label_h }}" class="w-full" aria-hidden="true" style="overflow: visible">
+      {# baseline #}
+      <line x1="0" y1="{{ chart_h }}" x2="{{ total_w }}" y2="{{ chart_h }}" stroke="#e2e8f0" stroke-width="1"/>
+      {% for day in chart_days %}
+        {% set i = loop.index0 %}
+        {% set x = i * (bar_w + gap) %}
+        {% set bar_h_px = (day.pts / chart_max * chart_h) | round | int %}
+        {% set y = chart_h - bar_h_px %}
+        {# bar #}
+        {% if bar_h_px > 0 %}
+        <rect
+          x="{{ x }}"
+          y="{{ y }}"
+          width="{{ bar_w }}"
+          height="{{ bar_h_px }}"
+          rx="3"
+          fill="{{ person.colour }}"
+          opacity="{{ '1' if day.is_today else '0.7' }}"
+        />
+        {% endif %}
+        {# week label on Mondays #}
+        {% if day.week_label %}
+        <text
+          x="{{ x + bar_w / 2 }}"
+          y="{{ chart_h + 16 }}"
+          text-anchor="middle"
+          font-size="9"
+          fill="#94a3b8"
+          font-family="system-ui,sans-serif"
+        >{{ day.date.strftime("%-d %b") }}</text>
+        {% endif %}
+        {# today marker #}
+        {% if day.is_today %}
+        <text
+          x="{{ x + bar_w / 2 }}"
+          y="{{ chart_h + 16 }}"
+          text-anchor="middle"
+          font-size="9"
+          fill="{{ person.colour }}"
+          font-family="system-ui,sans-serif"
+          font-weight="600"
+        >today</text>
+        {% endif %}
+      {% endfor %}
+    </svg>
+    {# pts axis hint #}
+    <p class="text-right text-xs text-slate-400 mt-1">max {{ chart_max }} pts/day</p>
+  </div>
+
+  {# --- Chore breakdown --- #}
+  {% if chore_rows %}
+  <div class="bg-white rounded-xl shadow-sm border p-4">
+    <h2 class="text-sm font-semibold text-slate-700 mb-3">Chore breakdown - last 30 days</h2>
+    <ul class="space-y-3">
+      {% for row in chore_rows %}
+      <li>
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-sm text-slate-700 font-medium">{{ row.name }}</span>
+          <span class="text-xs text-slate-500">{{ row.done }}/{{ row.scheduled }}
+            <span class="font-semibold ml-1" style="color: {{ person.colour }}">{{ row.rate }}%</span>
+          </span>
+        </div>
+        <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
+          <div class="h-2 rounded-full transition-all"
+               style="width: {{ row.rate }}%; background-color: {{ person.colour }}; opacity: 0.8"></div>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {# --- Insights row --- #}
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+    {% if best_day %}
+    <div class="bg-white rounded-xl shadow-sm border p-4 flex items-center gap-3">
+      <div class="text-2xl w-10 h-10 rounded-full flex items-center justify-center shrink-0"
+           style="background-color: {{ person.colour }}1A">
+        <svg class="w-5 h-5" style="color: {{ person.colour }}" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+        </svg>
+      </div>
+      <div>
+        <p class="text-xs text-slate-500 font-medium uppercase tracking-wide">Best day</p>
+        <p class="text-base font-bold text-slate-800">{{ best_day }}</p>
+        <p class="text-xs text-slate-400">most completions historically</p>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="bg-white rounded-xl shadow-sm border p-4 flex items-center gap-3">
+      <div class="text-2xl w-10 h-10 rounded-full flex items-center justify-center shrink-0"
+           style="background-color: {{ person.colour }}1A">
+        <svg class="w-5 h-5" style="color: {{ person.colour }}" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+        </svg>
+      </div>
+      <div>
+        <p class="text-xs text-slate-500 font-medium uppercase tracking-wide">Trend</p>
+        {% if last_week == 0 and this_week == 0 %}
+          <p class="text-base font-bold text-slate-800">No data yet</p>
+          <p class="text-xs text-slate-400">keep going!</p>
+        {% elif last_week == 0 %}
+          <p class="text-base font-bold text-emerald-600">New this week</p>
+          <p class="text-xs text-slate-400">{{ this_week }} pts earned</p>
+        {% else %}
+          {% set pct = ((this_week - last_week) / last_week * 100) | round | int %}
+          {% if pct > 0 %}
+          <p class="text-base font-bold text-emerald-600">Up {{ pct }}%</p>
+          {% elif pct < 0 %}
+          <p class="text-base font-bold text-rose-500">Down {{ pct | abs }}%</p>
+          {% else %}
+          <p class="text-base font-bold text-slate-700">Same pace</p>
+          {% endif %}
+          <p class="text-xs text-slate-400">vs last week</p>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+
+</main>
+{% endblock %}

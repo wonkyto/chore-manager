@@ -1,0 +1,8 @@
+<img id="avatar-{{ person_key }}"
+  src="{{ avatar_url(seed) }}"
+  alt="Avatar"
+  class="w-14 h-14 rounded-full cursor-pointer border-2 border-white shadow-sm hover:opacity-80 transition-opacity shrink-0"
+  title="Click to change avatar"
+  hx-get="{{ url_for('main.avatar_picker', person_key=person_key) }}"
+  hx-target="#avatar-{{ person_key }}"
+  hx-swap="outerHTML">

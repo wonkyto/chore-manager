@@ -1,0 +1,676 @@
+from __future__ import annotations
+
+import json
+import secrets
+from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
+
+from flask import (
+    Blueprint,
+    abort,
+    current_app,
+    make_response,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
+from sqlalchemy import func, or_, select
+
+from .approvals import (
+    InsufficientPointsError,
+    available_points,
+    points_earned,
+    points_in_status,
+    request_redemption,
+    resolve_redemption,
+)
+from .config import AppConfig, FamilyConfig, load_app_config, load_config
+from .db import db
+from .history import streak
+from .models import AdhocChore, ChoreCompletion, ChoreSkip, PersonSetting, Redemption
+from .schedule import is_scheduled_on
+from .stats import (
+    best_day_of_week,
+    completion_rate_30d,
+    daily_points,
+    overall_streak,
+    per_chore_stats,
+    weekly_points,
+)
+
+bp = Blueprint("main", __name__)
+
+
+def _load_app_cfg() -> AppConfig:
+    return load_app_config(current_app.config["APP_CONFIG_PATH"])
+
+
+def _pin_unlocked_for(app_cfg: AppConfig) -> bool:
+    if not app_cfg.pin_required:
+        return True
+    unlocked_at = session.get("pin_unlocked_at")
+    if not unlocked_at:
+        return False
+    return (datetime.now().timestamp() - unlocked_at) < app_cfg.pin_timeout_seconds
+
+
+def _pin_remaining(app_cfg: AppConfig) -> int:
+    if not app_cfg.pin_required:
+        return 0
+    unlocked_at = session.get("pin_unlocked_at")
+    if not unlocked_at:
+        return 0
+    return max(0, int(app_cfg.pin_timeout_seconds - (datetime.now().timestamp() - unlocked_at)))
+
+
+@bp.context_processor
+def inject_app_config() -> dict:
+    app_cfg = _load_app_cfg()
+    return {
+        "app_config": app_cfg,
+        "pin_required": app_cfg.pin_required,
+        "pin_unlocked": _pin_unlocked_for(app_cfg),
+        "pin_remaining": _pin_remaining(app_cfg),
+    }
+
+
+def _config() -> FamilyConfig:
+    return load_config(current_app.config["FAMILY_PATH"])
+
+
+def _person(person_key: str):
+    return next((p for p in _config().people if p.key == person_key), None)
+
+
+def _chore(chore_key: str):
+    return next((c for c in _config().chores if c.key == chore_key), None)
+
+
+_DICEBEAR_STYLE = "avataaars"
+_DICEBEAR_BG = "b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf"
+
+
+def _avatar_url(seed: str) -> str:
+    return (
+        f"https://api.dicebear.com/9.x/{_DICEBEAR_STYLE}/svg"
+        f"?seed={seed}&backgroundColor={_DICEBEAR_BG}"
+    )
+
+
+def _avatar_seed(person_key: str) -> str:
+    row = db.session.get(PersonSetting, person_key)
+    return row.avatar_seed if row and row.avatar_seed else person_key
+
+
+def _today() -> date:
+    tz = ZoneInfo(current_app.config["TIMEZONE"])
+    return datetime.now(tz).date()
+
+
+def _parse_view_date(param: str | None, today: date) -> date:
+    if not param:
+        return today
+    try:
+        return date.fromisoformat(param)
+    except ValueError:
+        return today
+
+
+def _day_label(view_date: date, today: date) -> str | None:
+    delta = (view_date - today).days
+    if delta == 0:
+        return "Today"
+    if delta == -1:
+        return "Yesterday"
+    if delta == 1:
+        return "Tomorrow"
+    return None
+
+
+def _build_item(person_key: str, chore_key: str, view_date: date, today: date) -> dict:
+    chore = _chore(chore_key)
+    done = (
+        db.session.scalar(
+            select(ChoreCompletion).where(
+                ChoreCompletion.chore_key == chore_key,
+                ChoreCompletion.person_key == person_key,
+                ChoreCompletion.completed_on == view_date,
+            )
+        )
+        is not None
+    )
+    skipped = (
+        db.session.scalar(
+            select(ChoreSkip).where(
+                ChoreSkip.chore_key == chore_key,
+                ChoreSkip.person_key == person_key,
+                ChoreSkip.skip_date == view_date,
+            )
+        )
+        is not None
+    )
+    return {
+        "chore_key": chore_key,
+        "name": chore.name,
+        "points": chore.points,
+        "done": done,
+        "skipped": skipped,
+        "streak": streak(db.session, _config(), chore_key, person_key, today)
+        if view_date == today
+        else 0,
+    }
+
+
+@bp.get("/")
+def index():
+    config = _config()
+    today = _today()
+    viewer = request.cookies.get("viewer")
+
+    view_date = _parse_view_date(request.args.get("date"), today)
+    is_today = view_date == today
+    prev_date = view_date - timedelta(days=1)
+    next_date = view_date + timedelta(days=1)
+
+    completed_keys = {
+        (row.chore_key, row.person_key)
+        for row in db.session.scalars(
+            select(ChoreCompletion).where(ChoreCompletion.completed_on == view_date)
+        ).all()
+    }
+    skipped_keys = {
+        (row.chore_key, row.person_key)
+        for row in db.session.scalars(
+            select(ChoreSkip).where(ChoreSkip.skip_date == view_date)
+        ).all()
+    }
+
+    visible_people = config.people
+    if viewer:
+        visible_people = [p for p in config.people if p.key == viewer]
+
+    columns = []
+    for person in visible_people:
+        chore_items = []
+        for chore in config.chores:
+            if person.key not in chore.assigned_to:
+                continue
+            if not is_scheduled_on(chore, view_date):
+                continue
+            chore_items.append(
+                {
+                    "chore_key": chore.key,
+                    "name": chore.name,
+                    "points": chore.points,
+                    "done": (chore.key, person.key) in completed_keys,
+                    "skipped": (chore.key, person.key) in skipped_keys,
+                    "streak": streak(db.session, config, chore.key, person.key, today)
+                    if is_today
+                    else 0,
+                }
+            )
+        columns.append(
+            {
+                "person": person,
+                "chores": chore_items,
+                "available": available_points(db.session, person.key),
+                "earned": points_earned(db.session, person.key),
+                "pending": points_in_status(db.session, person.key, "pending"),
+            }
+        )
+
+    pending = db.session.scalars(
+        select(Redemption).where(Redemption.status == "pending").order_by(Redemption.created_at)
+    ).all()
+
+    history_by_person: dict[str, list[Redemption]] = {}
+    adhoc_by_person: dict[str, list[AdhocChore]] = {}
+    for col in columns:
+        person_key = col["person"].key
+        history_by_person[person_key] = list(
+            db.session.scalars(
+                select(Redemption)
+                .where(Redemption.person_key == person_key)
+                .order_by(Redemption.created_at.desc())
+                .limit(20)
+            ).all()
+        )
+        adhoc_by_person[person_key] = list(
+            db.session.scalars(
+                select(AdhocChore)
+                .where(
+                    AdhocChore.person_key == person_key,
+                    func.coalesce(AdhocChore.start_date, AdhocChore.due_date) <= view_date,
+                    or_(
+                        AdhocChore.completed_at.is_(None),
+                        AdhocChore.completed_date == view_date,
+                    ),
+                )
+                .order_by(AdhocChore.due_date, AdhocChore.id)
+            ).all()
+        )
+
+    avatar_seeds = {
+        row.person_key: row.avatar_seed
+        for row in db.session.scalars(select(PersonSetting)).all()
+        if row.avatar_seed
+    }
+
+    config_chores = {c.name: c.points for c in config.chores}
+    adhoc_names = db.session.scalars(
+        select(AdhocChore.name).distinct().order_by(AdhocChore.name)
+    ).all()
+    suggestions_map = dict(config_chores)
+    for name in adhoc_names:
+        if name not in suggestions_map:
+            suggestions_map[name] = None
+    task_suggestions = [
+        {"name": n, "points": p}
+        for n, p in sorted(suggestions_map.items(), key=lambda x: x[0].lower())
+    ]
+
+    return render_template(
+        "today.html",
+        today=today,
+        view_date=view_date,
+        is_today=is_today,
+        prev_date=prev_date,
+        next_date=next_date,
+        day_label=_day_label(view_date, today),
+        columns=columns,
+        people=config.people,
+        viewer=viewer,
+        rewards=config.rewards,
+        pending=pending if is_today else [],
+        history_by_person=history_by_person,
+        adhoc_by_person=adhoc_by_person,
+        rewards_by_key={r.key: r for r in config.rewards},
+        people_by_key={p.key: p for p in config.people},
+        avatar_seeds=avatar_seeds,
+        avatar_url=_avatar_url,
+        task_suggestions=task_suggestions,
+    )
+
+
+@bp.post("/toggle/<chore_key>/<person_key>")
+def toggle(chore_key: str, person_key: str):
+    chore = _chore(chore_key)
+    person = _person(person_key)
+    if chore is None or person is None or person_key not in chore.assigned_to:
+        abort(404)
+
+    today = _today()
+    date_str = request.form.get("date")
+    toggle_date = date.fromisoformat(date_str) if date_str else today
+
+    if toggle_date != today:
+        app_cfg = _load_app_cfg()
+        if not _pin_unlocked_for(app_cfg):
+            # PIN expired between page load and tap - re-render cell as locked
+            item = _build_item(person_key, chore_key, toggle_date, today)
+            return render_template(
+                "partials/chore_cell.html",
+                item=item,
+                person=person,
+                is_today=False,
+                pin_unlocked=False,
+                view_date=toggle_date,
+            )
+
+    existing = db.session.scalar(
+        select(ChoreCompletion).where(
+            ChoreCompletion.chore_key == chore_key,
+            ChoreCompletion.person_key == person_key,
+            ChoreCompletion.completed_on == toggle_date,
+        )
+    )
+    if existing:
+        db.session.delete(existing)
+        just_done = False
+    else:
+        db.session.add(
+            ChoreCompletion(
+                chore_key=chore_key,
+                person_key=person_key,
+                completed_on=toggle_date,
+                points_awarded=chore.points,
+            )
+        )
+        just_done = True
+    db.session.commit()
+
+    item = _build_item(person_key, chore_key, toggle_date, today)
+    new_available = available_points(db.session, person_key)
+    cell = render_template(
+        "partials/chore_cell.html",
+        item=item,
+        person=person,
+        is_today=toggle_date == today,
+        pin_unlocked=_pin_unlocked_for(_load_app_cfg()),
+        view_date=toggle_date,
+    )
+    balance = render_template(
+        "partials/points_balance.html",
+        person_key=person_key,
+        available=new_available,
+        pending_pts=points_in_status(db.session, person_key, "pending"),
+    )
+    rewards = render_template(
+        "partials/rewards_panel.html",
+        person_key=person_key,
+        available=new_available,
+        rewards=_config().rewards,
+        oob=True,
+    )
+    response = make_response(cell + balance + rewards)
+    if just_done:
+        trigger = json.dumps({"chore-completed": {"personKey": person_key}})
+        response.headers["HX-Trigger-After-Swap"] = trigger
+    return response
+
+
+@bp.post("/redeem/<reward_key>/<person_key>")
+def redeem(reward_key: str, person_key: str):
+    config = _config()
+    reward = next((r for r in config.rewards if r.key == reward_key), None)
+    person = _person(person_key)
+    if reward is None or person is None:
+        abort(404)
+    try:
+        request_redemption(db.session, person_key, reward_key, reward.cost)
+        db.session.commit()
+    except InsufficientPointsError:
+        db.session.rollback()
+        return ("Not enough points available", 400)
+    return redirect(url_for("main.index"))
+
+
+@bp.post("/redemption/<int:redemption_id>/approve")
+def approve(redemption_id: int):
+    if not _pin_unlocked_for(_load_app_cfg()):
+        abort(403)
+    resolve_redemption(db.session, redemption_id, approve=True)
+    db.session.commit()
+    return redirect(url_for("main.index"))
+
+
+@bp.post("/redemption/<int:redemption_id>/deny")
+def deny(redemption_id: int):
+    if not _pin_unlocked_for(_load_app_cfg()):
+        abort(403)
+    resolve_redemption(db.session, redemption_id, approve=False)
+    db.session.commit()
+    return redirect(url_for("main.index"))
+
+
+@bp.post("/skip/<chore_key>/<person_key>")
+def skip(chore_key: str, person_key: str):
+    if not _pin_unlocked_for(_load_app_cfg()):
+        abort(403)
+    chore = _chore(chore_key)
+    person = _person(person_key)
+    if chore is None or person is None:
+        abort(404)
+    today = _today()
+    date_str = request.form.get("date")
+    skip_date = date.fromisoformat(date_str) if date_str else today
+    existing = db.session.scalar(
+        select(ChoreSkip).where(
+            ChoreSkip.chore_key == chore_key,
+            ChoreSkip.person_key == person_key,
+            ChoreSkip.skip_date == skip_date,
+        )
+    )
+    if not existing:
+        db.session.add(ChoreSkip(chore_key=chore_key, person_key=person_key, skip_date=skip_date))
+        db.session.commit()
+    item = _build_item(person_key, chore_key, skip_date, today)
+    return render_template(
+        "partials/chore_cell.html",
+        item=item,
+        person=person,
+        is_today=skip_date == today,
+        pin_unlocked=_pin_unlocked_for(_load_app_cfg()),
+        view_date=skip_date,
+    )
+
+
+@bp.post("/unskip/<chore_key>/<person_key>")
+def unskip(chore_key: str, person_key: str):
+    if not _pin_unlocked_for(_load_app_cfg()):
+        abort(403)
+    chore = _chore(chore_key)
+    person = _person(person_key)
+    if chore is None or person is None:
+        abort(404)
+    today = _today()
+    date_str = request.form.get("date")
+    skip_date = date.fromisoformat(date_str) if date_str else today
+    existing = db.session.scalar(
+        select(ChoreSkip).where(
+            ChoreSkip.chore_key == chore_key,
+            ChoreSkip.person_key == person_key,
+            ChoreSkip.skip_date == skip_date,
+        )
+    )
+    if existing:
+        db.session.delete(existing)
+        db.session.commit()
+    item = _build_item(person_key, chore_key, skip_date, today)
+    return render_template(
+        "partials/chore_cell.html",
+        item=item,
+        person=person,
+        is_today=skip_date == today,
+        pin_unlocked=_pin_unlocked_for(_load_app_cfg()),
+        view_date=skip_date,
+    )
+
+
+_ADHOC_NAME_MAX = 200
+_ADHOC_POINTS_MAX = 999
+
+
+@bp.post("/adhoc/add")
+def adhoc_add():
+    if not _pin_unlocked_for(_load_app_cfg()):
+        abort(403)
+    person_key = request.form.get("person_key", "")
+    name = request.form.get("name", "").strip()[:_ADHOC_NAME_MAX]
+    date_str = request.form.get("date")
+    try:
+        points = min(_ADHOC_POINTS_MAX, max(0, int(request.form.get("points", 5))))
+    except ValueError:
+        points = 5
+    if not name or not person_key or _person(person_key) is None:
+        abort(400)
+    today = _today()
+    try:
+        due = date.fromisoformat(date_str) if date_str else today
+    except ValueError:
+        due = today
+    db.session.add(
+        AdhocChore(name=name, person_key=person_key, start_date=today, due_date=due, points=points)
+    )
+    db.session.commit()
+    return redirect(url_for("main.index"))
+
+
+@bp.post("/adhoc/<int:adhoc_id>/toggle")
+def adhoc_toggle(adhoc_id: int):
+    task = db.session.get(AdhocChore, adhoc_id)
+    if task is None:
+        abort(404)
+    today = _today()
+    date_str = request.form.get("date")
+    view_date = date.fromisoformat(date_str) if date_str else today
+    if view_date != today and not _pin_unlocked_for(_load_app_cfg()):
+        abort(403)
+    if task.completed_at:
+        task.completed_at = None
+        task.completed_date = None
+    else:
+        task.completed_at = datetime.now(UTC).replace(tzinfo=None)
+        task.completed_date = view_date
+    db.session.commit()
+
+    just_done = task.completed_at is not None
+    new_available = available_points(db.session, task.person_key)
+    person = _person(task.person_key)
+    cell = render_template(
+        "partials/adhoc_cell.html",
+        task=task,
+        person=person,
+        is_today=view_date == today,
+        view_date=view_date,
+    )
+    balance = render_template(
+        "partials/points_balance.html",
+        person_key=task.person_key,
+        available=new_available,
+        pending_pts=points_in_status(db.session, task.person_key, "pending"),
+    )
+    rewards = render_template(
+        "partials/rewards_panel.html",
+        person_key=task.person_key,
+        available=new_available,
+        rewards=_config().rewards,
+        oob=True,
+    )
+    response = make_response(cell + balance + rewards)
+    if just_done:
+        trigger = json.dumps({"chore-completed": {"personKey": task.person_key}})
+        response.headers["HX-Trigger-After-Swap"] = trigger
+    return response
+
+
+@bp.post("/adhoc/<int:adhoc_id>/delete")
+def adhoc_delete(adhoc_id: int):
+    if not _pin_unlocked_for(_load_app_cfg()):
+        abort(403)
+    task = db.session.get(AdhocChore, adhoc_id)
+    if task is None:
+        abort(404)
+    due = task.due_date
+    db.session.delete(task)
+    db.session.commit()
+    today = _today()
+    if due == today:
+        redirect_url = url_for("main.index")
+    else:
+        redirect_url = url_for("main.index", date=due.isoformat())
+    return redirect(redirect_url)
+
+
+@bp.get("/avatar/<person_key>")
+def avatar_get(person_key: str):
+    if _person(person_key) is None:
+        abort(404)
+    seed = _avatar_seed(person_key)
+    return render_template(
+        "partials/avatar.html", person_key=person_key, seed=seed, avatar_url=_avatar_url
+    )
+
+
+@bp.get("/avatar/<person_key>/picker")
+def avatar_picker(person_key: str):
+    if _person(person_key) is None:
+        abort(404)
+    seeds = [secrets.token_hex(4) for _ in range(20)]
+    current = _avatar_seed(person_key)
+    return render_template(
+        "partials/avatar_picker.html",
+        person_key=person_key,
+        seeds=seeds,
+        current=current,
+        avatar_url=_avatar_url,
+    )
+
+
+@bp.post("/avatar/<person_key>")
+def avatar_set(person_key: str):
+    if _person(person_key) is None:
+        abort(404)
+    seed = request.form.get("seed", "").strip()
+    if not seed:
+        abort(400)
+    setting = db.session.get(PersonSetting, person_key)
+    if setting:
+        setting.avatar_seed = seed
+    else:
+        db.session.add(PersonSetting(person_key=person_key, avatar_seed=seed))
+    db.session.commit()
+    return render_template(
+        "partials/avatar.html", person_key=person_key, seed=seed, avatar_url=_avatar_url
+    )
+
+
+@bp.get("/stats/<person_key>")
+def stats(person_key: str):
+    person = _person(person_key)
+    if person is None:
+        abort(404)
+    config = _config()
+    today = _today()
+
+    chart_days = daily_points(db.session, person_key, today, days=28)
+    chart_max = max((d["pts"] for d in chart_days), default=1) or 1
+
+    done_30, sched_30 = completion_rate_30d(db.session, config, person_key, today)
+    completion_pct = round(done_30 / sched_30 * 100) if sched_30 else 0
+
+    this_week, last_week = weekly_points(db.session, person_key, today)
+    streak = overall_streak(db.session, person_key, today)
+    total_pts_alltime = points_earned(db.session, person_key)
+
+    chore_rows = per_chore_stats(db.session, config, person_key, today)
+    best_day = best_day_of_week(db.session, person_key)
+
+    avatar_seed = _avatar_seed(person_key)
+
+    return render_template(
+        "stats.html",
+        person=person,
+        today=today,
+        chart_days=chart_days,
+        chart_max=chart_max,
+        completion_pct=completion_pct,
+        done_30=done_30,
+        sched_30=sched_30,
+        this_week=this_week,
+        last_week=last_week,
+        streak=streak,
+        total_pts_alltime=total_pts_alltime,
+        chore_rows=chore_rows,
+        best_day=best_day,
+        avatar_seed=avatar_seed,
+        avatar_url=_avatar_url,
+    )
+
+
+@bp.post("/pin/unlock")
+def pin_unlock():
+    app_cfg = _load_app_cfg()
+    entered = request.form.get("pin", "").strip()
+    if entered and app_cfg.verify_pin(entered):
+        session["pin_unlocked_at"] = datetime.now().timestamp()
+    return redirect(request.referrer or url_for("main.index"))
+
+
+@bp.post("/pin/lock")
+def pin_lock():
+    session.pop("pin_unlocked_at", None)
+    return redirect(request.referrer or url_for("main.index"))
+
+
+@bp.post("/view-as")
+def view_as():
+    viewer = request.form.get("viewer", "all")
+    response = make_response(redirect(url_for("main.index")))
+    if viewer == "all" or _person(viewer) is None:
+        response.delete_cookie("viewer")
+    else:
+        response.set_cookie("viewer", viewer, max_age=60 * 60 * 24 * 365)
+    return response

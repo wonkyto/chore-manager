@@ -1,0 +1,18 @@
+<ul id="rewards-{{ person_key }}" {% if oob %}hx-swap-oob="true"{% endif %} class="mt-2 space-y-1">
+  {% for r in rewards %}
+  <li class="flex items-center justify-between gap-2 py-1">
+    <span class="text-sm">{{ r.name }}
+      <span class="text-slate-500 text-xs">({{ r.cost }} pts)</span>
+    </span>
+    <form method="post" action="{{ url_for('main.redeem', reward_key=r.key, person_key=person_key) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button
+        class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-2 py-1 rounded
+          {% if available < r.cost %}opacity-30 cursor-not-allowed{% endif %}"
+        {% if available < r.cost %}disabled{% endif %}>
+        Redeem
+      </button>
+    </form>
+  </li>
+  {% endfor %}
+</ul>

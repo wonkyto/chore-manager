@@ -216,3 +216,12 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project-specific
+instance/
+data/
+config/family.yaml
+config/app.yaml
+.uv/
+.cache/
+

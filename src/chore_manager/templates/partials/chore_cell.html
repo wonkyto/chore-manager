@@ -1,0 +1,76 @@
+{% set interactive = is_today or pin_unlocked %}
+{% set skipped = item.skipped %}
+<li id="chore-{{ item.chore_key }}-{{ person.key }}"
+  data-task-complete="{{ '1' if item.done or item.skipped else '0' }}"
+  class="p-3 transition select-none flex items-center justify-between gap-2
+    {% if skipped %}bg-slate-100
+    {% elif item.done %}bg-emerald-100
+    {% else %}bg-rose-50{% endif %}">
+  <div class="flex-1 min-w-0 flex items-center gap-3
+    {% if interactive and not skipped %}cursor-pointer{% endif %}"
+    {% if interactive and not skipped %}
+    hx-post="{{ url_for('main.toggle', chore_key=item.chore_key, person_key=person.key) }}"
+    {% if not is_today %}hx-vals='{"date": "{{ view_date.isoformat() }}"}'{% endif %}
+    hx-target="#chore-{{ item.chore_key }}-{{ person.key }}"
+    hx-swap="outerHTML"
+    {% endif %}>
+    <div class="shrink-0 w-10 h-10 rounded-full border-2 flex items-center justify-center
+      {% if skipped %}border-slate-300 bg-slate-200 text-slate-400
+      {% elif item.done %}border-emerald-600 bg-emerald-500 text-white
+      {% elif not interactive %}border-slate-200 bg-slate-50 text-slate-300
+      {% else %}border-rose-300 bg-white text-rose-300{% endif %}">
+      {% if item.done %}
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+      </svg>
+      {% elif not skipped and not interactive %}
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+      </svg>
+      {% endif %}
+    </div>
+    <div class="min-w-0">
+      <div class="font-medium truncate
+        {% if skipped %}line-through text-slate-400
+        {% elif item.done %}line-through text-emerald-800
+        {% else %}text-rose-900{% endif %}">
+        {{ item.name }}
+      </div>
+      <div class="text-xs text-slate-600 mt-1 flex items-center gap-2 flex-wrap">
+        <span>{{ item.points }} pts</span>
+        {% if skipped %}
+        <span class="text-slate-400 italic">skipped</span>
+        {% elif item.streak >= 2 %}
+        <span class="px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 font-semibold">
+          {{ item.streak }} in a row
+        </span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% if pin_unlocked and not item.done %}
+  {% if skipped %}
+  <button
+    hx-post="{{ url_for('main.unskip', chore_key=item.chore_key, person_key=person.key) }}"
+    hx-vals='{"date": "{{ view_date.isoformat() }}"}'
+    hx-target="#chore-{{ item.chore_key }}-{{ person.key }}"
+    hx-swap="outerHTML"
+    class="shrink-0 text-slate-400 hover:text-slate-700 p-1" title="Restore">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+    </svg>
+  </button>
+  {% else %}
+  <button
+    hx-post="{{ url_for('main.skip', chore_key=item.chore_key, person_key=person.key) }}"
+    hx-vals='{"date": "{{ view_date.isoformat() }}"}'
+    hx-target="#chore-{{ item.chore_key }}-{{ person.key }}"
+    hx-swap="outerHTML"
+    class="shrink-0 text-slate-300 hover:text-rose-500 p-1" title="Skip today">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+    </svg>
+  </button>
+  {% endif %}
+  {% endif %}
+</li>

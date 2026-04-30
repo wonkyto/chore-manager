@@ -1,0 +1,35 @@
+<div id="avatar-{{ person_key }}"
+  class="relative shrink-0">
+  <div class="absolute left-0 top-0 z-10 bg-white rounded-xl shadow-lg border p-3 w-72">
+    <p class="text-xs text-slate-500 mb-2 font-medium">Pick an avatar</p>
+    <div class="grid grid-cols-5 gap-2">
+      {% for seed in seeds %}
+      <button type="button"
+        class="rounded-full overflow-hidden border-2 hover:border-indigo-400 transition-colors
+          {% if seed == current %}border-indigo-500{% else %}border-transparent{% endif %}"
+        hx-post="{{ url_for('main.avatar_set', person_key=person_key) }}"
+        hx-vals='{"seed": "{{ seed }}"}'
+        hx-target="#avatar-{{ person_key }}"
+        hx-swap="outerHTML">
+        <img src="{{ avatar_url(seed) }}" alt="Avatar option" class="w-12 h-12">
+      </button>
+      {% endfor %}
+    </div>
+    <div class="flex justify-between mt-3">
+      <button type="button"
+        class="text-xs text-slate-500 hover:text-slate-700 underline"
+        hx-get="{{ url_for('main.avatar_picker', person_key=person_key) }}"
+        hx-target="#avatar-{{ person_key }}"
+        hx-swap="outerHTML">
+        Shuffle
+      </button>
+      <button type="button"
+        class="text-xs text-slate-500 hover:text-slate-700 underline"
+        hx-get="{{ url_for('main.avatar_get', person_key=person_key) }}"
+        hx-target="#avatar-{{ person_key }}"
+        hx-swap="outerHTML">
+        Cancel
+      </button>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="px-4 py-2 bg-white border-b shadow-sm">
+  <div class="flex items-center justify-between gap-2">
+    <div class="flex items-center gap-2 min-w-0">
+      <img src="{{ url_for('static', filename='cow.svg') }}" alt="" class="w-9 h-9 shrink-0">
+      <h1 class="text-2xl font-bold tracking-tight leading-tight truncate">{{ app_config.app_name | upper }}</h1>
+    </div>
+    <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+      {% if pin_required %}
+        {% if pin_unlocked %}
+        <form method="post" action="{{ url_for('main.pin_lock') }}" class="flex items-center gap-1">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <span class="text-xs text-emerald-700 font-semibold">(<span id="pin-countdown">{{ pin_remaining }}</span>s)</span>
+          <button class="text-xs bg-slate-200 hover:bg-slate-300 px-2 py-1 rounded">Lock</button>
+        </form>
+        {% else %}
+        <form method="post" action="{{ url_for('main.pin_unlock') }}" class="flex items-center gap-1">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+          </svg>
+          <input type="password" name="pin" inputmode="numeric" maxlength="8" placeholder="PIN"
+                 class="border rounded px-2 py-1 w-16 text-sm min-w-0" autocomplete="off">
+          <button class="text-xs bg-slate-700 hover:bg-slate-800 text-white px-2 py-1 rounded whitespace-nowrap">Unlock</button>
+        </form>
+        {% endif %}
+      {% endif %}
+      <form method="post" action="{{ url_for('main.view_as') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <select name="viewer" onchange="this.form.submit()" class="border rounded px-2 py-1 bg-white text-sm max-w-[120px]" title="Viewing as">
+          <option value="all" {% if not viewer %}selected{% endif %}>Everyone</option>
+          {% for p in people %}
+          <option value="{{ p.key }}" {% if viewer == p.key %}selected{% endif %}>{{ p.name }}</option>
+          {% endfor %}
+        </select>
+      </form>
+    </div>
+  </div>
+  <div class="flex items-center justify-center gap-1 mt-1 pb-1">
+    <a href="{{ url_for('main.index', date=prev_date.isoformat()) }}"
+       class="text-slate-400 hover:text-slate-700 p-1 rounded hover:bg-slate-100" aria-label="Previous day">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+      </svg>
+    </a>
+    <div class="text-sm text-slate-600 text-center px-1">
+      {% if day_label %}
+      <span class="font-semibold {% if is_today %}text-indigo-600{% endif %}">{{ day_label }}</span>
+      &middot;
+      {% endif %}
+      {{ view_date.strftime("%a %d %b %Y") }}
+    </div>
+    <a href="{{ url_for('main.index', date=next_date.isoformat()) }}"
+       class="text-slate-400 hover:text-slate-700 p-1 rounded hover:bg-slate-100" aria-label="Next day">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+      </svg>
+    </a>
+    {% if not is_today %}
+    <a href="{{ url_for('main.index') }}"
+       class="text-xs bg-indigo-100 text-indigo-700 hover:bg-indigo-200 px-2 py-0.5 rounded font-semibold ml-1">
+      Today
+    </a>
+    {% endif %}
+  </div>
+</header>
+
+{% if pending %}
+<section class="px-4 py-3 bg-amber-50 border-b">
+  <h2 class="font-semibold mb-2 text-amber-900">Pending approvals</h2>
+  {% if pin_required and not pin_unlocked %}
+  <p class="text-sm text-amber-700 italic">Enter the parental PIN to approve or deny requests.</p>
+  {% else %}
+  <ul class="space-y-2">
+    {% for r in pending %}
+    <li class="flex items-center justify-between bg-white rounded px-3 py-2 shadow-sm">
+      <div>
+        <strong>{{ people_by_key[r.person_key].name }}</strong>
+        wants
+        <em>{{ rewards_by_key[r.reward_key].name if r.reward_key in rewards_by_key else r.reward_key }}</em>
+        ({{ r.points_cost }} pts)
+      </div>
+      <div class="flex gap-2">
+        <form method="post" action="{{ url_for('main.approve', redemption_id=r.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded font-semibold">Approve</button>
+        </form>
+        <form method="post" action="{{ url_for('main.deny', redemption_id=r.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="bg-rose-500 hover:bg-rose-600 text-white px-3 py-1 rounded font-semibold">Deny</button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if not is_today %}
+<div class="px-4 py-2 border-b text-sm text-center
+  {% if pin_unlocked %}bg-emerald-50 text-emerald-700{% else %}bg-slate-100 text-slate-500{% endif %}">
+  Viewing {{ day_label or view_date.strftime("%A %d %B") }} &middot;
+  {% if pin_unlocked %}
+    Parental unlock active - chores can be edited
+  {% else %}
+    Enter PIN to edit past or future chores
+  {% endif %}
+</div>
+{% endif %}
+
+<datalist id="task-suggestions">
+  {% for s in task_suggestions %}
+  <option value="{{ s.name }}"{% if s.points is not none %} data-points="{{ s.points }}"{% endif %}>
+  {% endfor %}
+</datalist>
+
+<main class="grid gap-3 p-3 grid-cols-1 md:grid-cols-2 xl:grid-cols-{{ columns|length }}">
+  {% for col in columns %}
+  {% set person = col.person %}
+  <section class="bg-white rounded-lg shadow border-t-4" style="border-color: {{ person.colour }}" data-person-key="{{ person.key }}">
+    <header class="p-3 border-b flex items-start gap-3" style="background-color: {{ person.colour }}1A">
+      {% with person_key=person.key, seed=avatar_seeds.get(person.key, person.key) %}
+        {% include "partials/avatar.html" %}
+      {% endwith %}
+      <div class="min-w-0 flex-1">
+      <div class="flex items-center gap-2">
+        <h2 class="font-bold text-xl">{{ person.name }}</h2>
+        <a href="{{ url_for('main.stats', person_key=person.key) }}"
+           class="text-xs text-slate-500 hover:text-slate-700 flex items-center gap-0.5 opacity-60 hover:opacity-100 transition-opacity"
+           title="View stats">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+          </svg>
+        </a>
+      </div>
+      <div id="balance-{{ person.key }}" class="text-sm text-slate-600 mt-1">
+        <span class="font-semibold text-emerald-700">{{ col.available }} pts</span>
+        available
+        {% if col.pending %}
+        <span class="text-amber-700">({{ col.pending }} pending)</span>
+        {% endif %}
+      </div>
+      </div>
+    </header>
+
+    <ul class="divide-y" id="chores-{{ person.key }}">
+      {% for item in col.chores %}
+        {% include "partials/chore_cell.html" %}
+      {% else %}
+        <li class="p-4 text-slate-500 italic">Nothing scheduled</li>
+      {% endfor %}
+    </ul>
+
+    {% set adhoc_tasks = adhoc_by_person[person.key] %}
+    {% if adhoc_tasks or pin_unlocked %}
+    <div class="border-t border-dashed">
+      {% if adhoc_tasks %}
+      <ul class="divide-y divide-dashed">
+        {% for task in adhoc_tasks %}
+          {% include "partials/adhoc_cell.html" %}
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% if pin_unlocked %}
+      <form method="post" action="{{ url_for('main.adhoc_add') }}"
+            class="px-3 py-2 bg-slate-50 space-y-2">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="person_key" value="{{ person.key }}">
+        <input type="text" name="name" placeholder="Add a task..." required
+               list="task-suggestions" autocomplete="off"
+               class="w-full border rounded px-2 py-1 text-sm"
+               oninput="choreAutofill(this, '{{ person.key }}')">
+        <div class="flex items-center gap-2">
+          <input type="date" name="date" value="{{ view_date.isoformat() }}"
+                 class="border rounded px-2 py-1 text-sm flex-1 min-w-0">
+          <input type="number" name="points" value="5" min="0" max="999"
+                 id="adhoc-pts-{{ person.key }}"
+                 class="border rounded px-2 py-1 text-sm w-16 text-center shrink-0">
+          <span class="text-xs text-slate-400 shrink-0">pts</span>
+          <button class="bg-slate-700 hover:bg-slate-800 text-white text-xs px-3 py-1 rounded shrink-0">Add</button>
+        </div>
+      </form>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if is_today %}
+    <footer class="p-3 border-t bg-slate-50 space-y-3">
+      {% if rewards %}
+      <details>
+        <summary class="cursor-pointer text-sm font-semibold text-slate-700">Redeem rewards</summary>
+        {% with person_key=person.key, available=col.available, oob=false %}
+          {% include "partials/rewards_panel.html" %}
+        {% endwith %}
+      </details>
+      {% endif %}
+      {% with history = history_by_person[person.key] %}
+        {% include "partials/redemption_history.html" %}
+      {% endwith %}
+    </footer>
+    {% endif %}
+  </section>
+  {% endfor %}
+</main>
+{% endblock %}
