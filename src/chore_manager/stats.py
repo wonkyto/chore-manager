@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .config import FamilyConfig
-from .models import AdhocChore, ChoreCompletion
+from .models import AdhocChore, Adjustment, ChoreCompletion
 from .schedule import is_scheduled_on
 
 _DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -39,12 +39,24 @@ def daily_points(session: Session, person_key: str, today: date, days: int = 28)
         .group_by(AdhocChore.completed_date)
     ).all()
 
+    adj_rows = session.execute(
+        select(Adjustment.created_on, func.sum(Adjustment.points))
+        .where(
+            Adjustment.person_key == person_key,
+            Adjustment.created_on >= start,
+            Adjustment.created_on <= today,
+        )
+        .group_by(Adjustment.created_on)
+    ).all()
+
     pts_map: dict[date, int] = defaultdict(int)
     for d, pts in sched_rows:
         pts_map[d] += int(pts or 0)
     for d, pts in adhoc_rows:
         if d is not None:
             pts_map[d] += int(pts or 0)
+    for d, pts in adj_rows:
+        pts_map[d] += int(pts or 0)
 
     result = []
     for i in range(days):
@@ -168,7 +180,17 @@ def weekly_points(session: Session, person_key: str, today: date) -> tuple[int, 
             )
             or 0
         )
-        return int(sched) + int(adhoc)
+        adj = (
+            session.scalar(
+                select(func.coalesce(func.sum(Adjustment.points), 0)).where(
+                    Adjustment.person_key == person_key,
+                    Adjustment.created_on >= start,
+                    Adjustment.created_on < end,
+                )
+            )
+            or 0
+        )
+        return int(sched) + int(adhoc) + int(adj)
 
     return _sum(week_start, today + timedelta(days=1)), _sum(last_start, week_start)
 

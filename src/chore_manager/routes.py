@@ -29,7 +29,7 @@ from .approvals import (
 from .config import AppConfig, FamilyConfig, load_app_config, load_config
 from .db import db
 from .history import streak
-from .models import AdhocChore, ChoreCompletion, ChoreSkip, PersonSetting, Redemption
+from .models import AdhocChore, Adjustment, ChoreCompletion, ChoreSkip, PersonSetting, Redemption
 from .schedule import is_scheduled_on
 from .stats import (
     best_day_of_week,
@@ -564,6 +564,56 @@ def adhoc_delete(adhoc_id: int):
     return redirect(redirect_url)
 
 
+_ADJUSTMENT_REASON_MAX = 200
+_ADJUSTMENT_AMOUNT_MAX = 9999
+
+
+def _parse_adjustment_amount(form) -> int | None:
+    """Returns signed points from either a preset 'points' button or a custom amount + sign."""
+    raw = form.get("points")
+    if raw is not None:
+        try:
+            value = int(raw)
+        except ValueError:
+            return None
+        return value if -_ADJUSTMENT_AMOUNT_MAX <= value <= _ADJUSTMENT_AMOUNT_MAX else None
+
+    raw_custom = form.get("custom")
+    sign = form.get("custom_sign")
+    if raw_custom is None or sign not in {"add", "deduct"}:
+        return None
+    try:
+        magnitude = int(raw_custom)
+    except ValueError:
+        return None
+    if magnitude <= 0 or magnitude > _ADJUSTMENT_AMOUNT_MAX:
+        return None
+    return magnitude if sign == "add" else -magnitude
+
+
+@bp.post("/adjustment/add")
+def adjustment_add():
+    if not _pin_unlocked_for(_load_app_cfg()):
+        abort(403)
+    person_key = request.form.get("person_key", "")
+    if _person(person_key) is None:
+        abort(400)
+    points = _parse_adjustment_amount(request.form)
+    if points is None or points == 0:
+        abort(400)
+    reason = request.form.get("reason", "").strip()[:_ADJUSTMENT_REASON_MAX] or None
+    db.session.add(
+        Adjustment(
+            person_key=person_key,
+            points=points,
+            reason=reason,
+            created_on=_today(),
+        )
+    )
+    db.session.commit()
+    return redirect(url_for("main.index"))
+
+
 @bp.get("/avatar/<person_key>")
 def avatar_get(person_key: str):
     if _person(person_key) is None:
@@ -616,7 +666,7 @@ def stats(person_key: str):
     today = _today()
 
     chart_days = daily_points(db.session, person_key, today, days=28)
-    chart_max = max((d["pts"] for d in chart_days), default=1) or 1
+    chart_max = max(max((d["pts"] for d in chart_days), default=1), 1)
 
     done_30, sched_30 = completion_rate_30d(db.session, config, person_key, today)
     completion_pct = round(done_30 / sched_30 * 100) if sched_30 else 0

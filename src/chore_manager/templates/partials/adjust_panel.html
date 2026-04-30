@@ -1,0 +1,29 @@
+<details>
+  <summary class="cursor-pointer text-sm font-semibold text-slate-700">Adjust Chorecoins</summary>
+  <form method="post" action="{{ url_for('main.adjustment_add') }}" class="mt-2 space-y-2">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="person_key" value="{{ person_key }}">
+    <input type="text" name="reason" placeholder="Reason (optional)" maxlength="200"
+           class="w-full border rounded px-2 py-1 text-sm">
+    <div class="grid grid-cols-5 gap-1">
+      {% for n in [5, 10, 20, 50, 100] %}
+      <button name="points" value="{{ n }}"
+              class="bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-xs font-semibold py-1 rounded">+{{ n }}</button>
+      {% endfor %}
+    </div>
+    <div class="grid grid-cols-5 gap-1">
+      {% for n in [5, 10, 20, 50, 100] %}
+      <button name="points" value="-{{ n }}"
+              class="bg-rose-100 hover:bg-rose-200 text-rose-800 text-xs font-semibold py-1 rounded">-{{ n }}</button>
+      {% endfor %}
+    </div>
+    <div class="flex items-center gap-1">
+      <input type="number" name="custom" min="1" max="9999" placeholder="Custom"
+             class="border rounded px-2 py-1 text-sm flex-1 min-w-0">
+      <button name="custom_sign" value="add"
+              class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1 rounded shrink-0">Add</button>
+      <button name="custom_sign" value="deduct"
+              class="bg-rose-500 hover:bg-rose-600 text-white text-xs font-semibold px-3 py-1 rounded shrink-0">Deduct</button>
+    </div>
+  </form>
+</details>

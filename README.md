@@ -14,6 +14,7 @@ A household chore tracker for families. Each person gets a column showing their 
 - Per-device "viewing as" mode via cookie - set it on a personal device to see only your column
 - App and family config live in YAML files; changes are picked up on the next page load with no restart
 - Ad-hoc tasks - parents can add one-off tasks with custom Chorecoins; the name field suggests all previously used task names and auto-fills the value for known chores
+- Manual Chorecoin adjustments - parents can add or deduct Chorecoins (preset buttons or a custom amount, with an optional reason) for bonuses, corrections, or penalties outside the chore system
 - Per-person stats page (`/stats/<person_key>`) showing streak, 30-day completion rate, all-time Chorecoins, weekly trend, a 4-week chart, and a per-chore breakdown
 
 ## Setup

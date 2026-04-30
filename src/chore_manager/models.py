@@ -69,3 +69,14 @@ class Redemption(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     resolved_note: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+
+class Adjustment(Base):
+    __tablename__ = "adjustment"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    person_key: Mapped[str] = mapped_column(String(64), index=True)
+    points: Mapped[int] = mapped_column(Integer)
+    reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_on: Mapped[date] = mapped_column(Date, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)

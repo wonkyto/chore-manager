@@ -196,6 +196,11 @@
         {% endwith %}
       </details>
       {% endif %}
+      {% if pin_unlocked %}
+        {% with person_key=person.key %}
+          {% include "partials/adjust_panel.html" %}
+        {% endwith %}
+      {% endif %}
       {% with history = history_by_person[person.key] %}
         {% include "partials/redemption_history.html" %}
       {% endwith %}

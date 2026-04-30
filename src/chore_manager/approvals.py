@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .models import AdhocChore, ChoreCompletion, Redemption
+from .models import AdhocChore, Adjustment, ChoreCompletion, Redemption
 
 
 class InsufficientPointsError(Exception):
@@ -43,7 +43,13 @@ def points_earned(session: Session, person_key: str) -> int:
             AdhocChore.completed_at.isnot(None),
         ),
     )
-    return from_scheduled + from_adhoc
+    from_adjustments = _sum_or_zero(
+        session,
+        select(func.coalesce(func.sum(Adjustment.points), 0)).where(
+            Adjustment.person_key == person_key
+        ),
+    )
+    return from_scheduled + from_adhoc + from_adjustments
 
 
 def points_in_status(session: Session, person_key: str, status: str) -> int:
