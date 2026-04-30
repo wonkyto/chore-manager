@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 
 from chore_manager.config import FamilyConfig, Weekday
-from chore_manager.schedule import chores_for, weekday_for
+from chore_manager.schedule import chores_for, is_scheduled_on, previous_occurrence, weekday_for
 
 
 def _config(chores: list[dict]) -> FamilyConfig:
@@ -95,3 +95,193 @@ def test_assignment_to_unknown_person_rejected():
                 ],
             }
         )
+
+
+def _single_chore(spec: dict):
+    cfg = _config([{**spec, "assigned_to": ["alice"]}])
+    return cfg.chores[0]
+
+
+def test_fortnightly_fires_on_anchor_week_only():
+    chore = _single_chore(
+        {
+            "key": "bins",
+            "name": "Bins",
+            "points": 5,
+            "frequency": "fortnightly",
+            "days": ["tue"],
+            "anchor_date": "2026-05-05",  # Tuesday
+        }
+    )
+    assert is_scheduled_on(chore, date(2026, 5, 5))  # anchor week
+    assert not is_scheduled_on(chore, date(2026, 5, 12))  # off week
+    assert is_scheduled_on(chore, date(2026, 5, 19))  # on week
+    assert not is_scheduled_on(chore, date(2026, 4, 28))  # off week before anchor
+    assert is_scheduled_on(chore, date(2026, 4, 21))  # on week before anchor
+
+
+def test_fortnightly_only_on_listed_days_within_on_week():
+    chore = _single_chore(
+        {
+            "key": "bins",
+            "name": "Bins",
+            "points": 5,
+            "frequency": "fortnightly",
+            "days": ["tue"],
+            "anchor_date": "2026-05-05",
+        }
+    )
+    # Same on-week as anchor, but Wednesday isn't a listed day
+    assert not is_scheduled_on(chore, date(2026, 5, 6))
+
+
+def test_monthly_fires_on_specific_day_of_month():
+    chore = _single_chore(
+        {
+            "key": "rent",
+            "name": "Rent",
+            "points": 5,
+            "frequency": "monthly",
+            "day_of_month": 15,
+        }
+    )
+    assert is_scheduled_on(chore, date(2026, 5, 15))
+    assert not is_scheduled_on(chore, date(2026, 5, 14))
+    assert is_scheduled_on(chore, date(2026, 6, 15))
+
+
+def test_monthly_day_31_clamps_to_last_day_of_short_months():
+    chore = _single_chore(
+        {
+            "key": "filter",
+            "name": "Filter",
+            "points": 5,
+            "frequency": "monthly",
+            "day_of_month": 31,
+        }
+    )
+    # February: clamps to 28 in 2026 (non-leap)
+    assert is_scheduled_on(chore, date(2026, 2, 28))
+    assert not is_scheduled_on(chore, date(2026, 2, 27))
+    # April has 30 days
+    assert is_scheduled_on(chore, date(2026, 4, 30))
+    # March has 31
+    assert is_scheduled_on(chore, date(2026, 3, 31))
+
+
+def test_monthly_day_29_in_february_leap_vs_non_leap():
+    chore = _single_chore(
+        {
+            "key": "x",
+            "name": "X",
+            "points": 5,
+            "frequency": "monthly",
+            "day_of_month": 29,
+        }
+    )
+    # 2024 is a leap year
+    assert is_scheduled_on(chore, date(2024, 2, 29))
+    # 2026 is not - clamps to 28
+    assert is_scheduled_on(chore, date(2026, 2, 28))
+    assert not is_scheduled_on(chore, date(2026, 2, 27))
+
+
+def test_annual_fires_on_specified_month_and_day():
+    chore = _single_chore(
+        {
+            "key": "smoke",
+            "name": "Smoke alarms",
+            "points": 5,
+            "frequency": "annual",
+            "month": 4,
+            "day_of_month": 1,
+        }
+    )
+    assert is_scheduled_on(chore, date(2026, 4, 1))
+    assert not is_scheduled_on(chore, date(2026, 4, 2))
+    assert not is_scheduled_on(chore, date(2026, 5, 1))
+    assert is_scheduled_on(chore, date(2027, 4, 1))
+
+
+def test_annual_feb_29_clamps_in_non_leap_years():
+    chore = _single_chore(
+        {
+            "key": "x",
+            "name": "X",
+            "points": 5,
+            "frequency": "annual",
+            "month": 2,
+            "day_of_month": 29,
+        }
+    )
+    assert is_scheduled_on(chore, date(2024, 2, 29))
+    assert is_scheduled_on(chore, date(2026, 2, 28))
+
+
+def test_every_n_days_from_anchor():
+    chore = _single_chore(
+        {
+            "key": "water",
+            "name": "Water plants",
+            "points": 5,
+            "frequency": "every_n_days",
+            "every_days": 3,
+            "anchor_date": "2026-04-30",
+        }
+    )
+    assert is_scheduled_on(chore, date(2026, 4, 30))
+    assert not is_scheduled_on(chore, date(2026, 5, 1))
+    assert not is_scheduled_on(chore, date(2026, 5, 2))
+    assert is_scheduled_on(chore, date(2026, 5, 3))
+    assert is_scheduled_on(chore, date(2026, 5, 6))
+    # Before anchor, never fires
+    assert not is_scheduled_on(chore, date(2026, 4, 29))
+
+
+def test_previous_occurrence_monthly_walks_to_prior_month():
+    chore = _single_chore(
+        {
+            "key": "rent",
+            "name": "Rent",
+            "points": 5,
+            "frequency": "monthly",
+            "day_of_month": 15,
+        }
+    )
+    # Before this month's occurrence, returns last month's
+    assert previous_occurrence(chore, date(2026, 5, 14)) == date(2026, 4, 15)
+    # On the day, returns today
+    assert previous_occurrence(chore, date(2026, 5, 15)) == date(2026, 5, 15)
+    # Across year boundary
+    assert previous_occurrence(chore, date(2026, 1, 14)) == date(2025, 12, 15)
+
+
+def test_previous_occurrence_annual_walks_to_prior_year():
+    chore = _single_chore(
+        {
+            "key": "smoke",
+            "name": "Smoke alarms",
+            "points": 5,
+            "frequency": "annual",
+            "month": 4,
+            "day_of_month": 1,
+        }
+    )
+    assert previous_occurrence(chore, date(2026, 3, 31)) == date(2025, 4, 1)
+    assert previous_occurrence(chore, date(2026, 4, 1)) == date(2026, 4, 1)
+    assert previous_occurrence(chore, date(2026, 12, 31)) == date(2026, 4, 1)
+
+
+def test_previous_occurrence_every_n_days_aligns_to_anchor():
+    chore = _single_chore(
+        {
+            "key": "water",
+            "name": "Water",
+            "points": 5,
+            "frequency": "every_n_days",
+            "every_days": 3,
+            "anchor_date": "2026-04-30",
+        }
+    )
+    assert previous_occurrence(chore, date(2026, 5, 4)) == date(2026, 5, 3)
+    assert previous_occurrence(chore, date(2026, 4, 29)) is None

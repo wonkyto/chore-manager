@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import secrets
+from datetime import date
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Literal
@@ -56,7 +57,40 @@ class WeeklyChore(_ChoreBase):
         return v
 
 
-Chore = Annotated[DailyChore | WeeklyChore, Field(discriminator="frequency")]
+class FortnightlyChore(_ChoreBase):
+    frequency: Literal["fortnightly"]
+    days: list[Weekday]
+    anchor_date: date
+
+    @field_validator("days")
+    @classmethod
+    def days_not_empty(cls, v: list[Weekday]) -> list[Weekday]:
+        if not v:
+            raise ValueError("fortnightly chore needs at least one day")
+        return v
+
+
+class MonthlyChore(_ChoreBase):
+    frequency: Literal["monthly"]
+    day_of_month: int = Field(ge=1, le=31)
+
+
+class AnnualChore(_ChoreBase):
+    frequency: Literal["annual"]
+    month: int = Field(ge=1, le=12)
+    day_of_month: int = Field(ge=1, le=31)
+
+
+class EveryNDaysChore(_ChoreBase):
+    frequency: Literal["every_n_days"]
+    every_days: int = Field(ge=2)
+    anchor_date: date
+
+
+Chore = Annotated[
+    DailyChore | WeeklyChore | FortnightlyChore | MonthlyChore | AnnualChore | EveryNDaysChore,
+    Field(discriminator="frequency"),
+]
 
 
 class Reward(BaseModel):

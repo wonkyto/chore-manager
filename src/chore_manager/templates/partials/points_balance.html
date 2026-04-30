@@ -1,5 +1,5 @@
 <div id="balance-{{ person_key }}" hx-swap-oob="true" class="text-sm text-slate-600 mt-1">
-  <span class="font-semibold text-emerald-700">{{ available }} pts</span>
+  <span class="font-semibold text-emerald-700 inline-flex items-center gap-0.5">{{ available }} <img src="{{ url_for('static', filename='chore-coin.svg') }}" alt="Chorecoins" class="inline-block w-4 h-4"></span>
   available
   {% if pending_pts %}
   <span class="text-amber-700">({{ pending_pts }} pending)</span>

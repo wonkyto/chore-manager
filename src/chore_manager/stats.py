@@ -119,11 +119,13 @@ def per_chore_stats(
                 "points": chore.points,
                 "done": done,
                 "scheduled": scheduled,
-                "rate": round(done / scheduled * 100) if scheduled > 0 else 0,
+                "rate": round(done / scheduled * 100) if scheduled > 0 else None,
             }
         )
 
-    return sorted(result, key=lambda x: -x["rate"])
+    # Chores with no scheduled occurrences in the window (e.g. annual chores)
+    # sort to the bottom.
+    return sorted(result, key=lambda x: (x["rate"] is None, -(x["rate"] or 0)))
 
 
 def best_day_of_week(session: Session, person_key: str) -> str | None:

@@ -383,7 +383,7 @@ def redeem(reward_key: str, person_key: str):
         db.session.commit()
     except InsufficientPointsError:
         db.session.rollback()
-        return ("Not enough points available", 400)
+        return ("Not enough Chorecoins available", 400)
     return redirect(url_for("main.index"))
 
 

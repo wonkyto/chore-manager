@@ -37,7 +37,7 @@
         {{ item.name }}
       </div>
       <div class="text-xs text-slate-600 mt-1 flex items-center gap-2 flex-wrap">
-        <span>{{ item.points }} pts</span>
+        <span class="inline-flex items-center gap-0.5">{{ item.points }} <img src="{{ url_for('static', filename='chore-coin.svg') }}" alt="Chorecoins" class="inline-block w-3.5 h-3.5"></span>
         {% if skipped %}
         <span class="text-slate-400 italic">skipped</span>
         {% elif item.streak >= 2 %}

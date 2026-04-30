@@ -79,7 +79,7 @@
         <strong>{{ people_by_key[r.person_key].name }}</strong>
         wants
         <em>{{ rewards_by_key[r.reward_key].name if r.reward_key in rewards_by_key else r.reward_key }}</em>
-        ({{ r.points_cost }} pts)
+        <span class="inline-flex items-center gap-0.5">({{ r.points_cost }} <img src="{{ url_for('static', filename='chore-coin.svg') }}" alt="Chorecoins" class="inline-block w-3.5 h-3.5">)</span>
       </div>
       <div class="flex gap-2">
         <form method="post" action="{{ url_for('main.approve', redemption_id=r.id) }}">
@@ -136,7 +136,7 @@
         </a>
       </div>
       <div id="balance-{{ person.key }}" class="text-sm text-slate-600 mt-1">
-        <span class="font-semibold text-emerald-700">{{ col.available }} pts</span>
+        <span class="font-semibold text-emerald-700 inline-flex items-center gap-0.5">{{ col.available }} <img src="{{ url_for('static', filename='chore-coin.svg') }}" alt="Chorecoins" class="inline-block w-4 h-4"></span>
         available
         {% if col.pending %}
         <span class="text-amber-700">({{ col.pending }} pending)</span>
@@ -178,7 +178,7 @@
           <input type="number" name="points" value="5" min="0" max="999"
                  id="adhoc-pts-{{ person.key }}"
                  class="border rounded px-2 py-1 text-sm w-16 text-center shrink-0">
-          <span class="text-xs text-slate-400 shrink-0">pts</span>
+          <img src="{{ url_for('static', filename='chore-coin.svg') }}" alt="Chorecoins" class="w-4 h-4 shrink-0">
           <button class="bg-slate-700 hover:bg-slate-800 text-white text-xs px-3 py-1 rounded shrink-0">Add</button>
         </div>
       </form>

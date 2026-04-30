@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+from chore_manager.config import FamilyConfig
 from chore_manager.db import db
 from chore_manager.history import missed_count, streak
 from chore_manager.models import ChoreCompletion
@@ -67,6 +68,71 @@ def test_weekly_streak_skips_missing_scheduled_day(app):
         db.session.commit()
         cfg = app.config["FAMILY"]
         assert streak(db.session, cfg, "piano", "bob", today) == 1
+
+
+def _config_with(chore_spec: dict) -> FamilyConfig:
+    return FamilyConfig.model_validate(
+        {
+            "people": [{"key": "bob", "name": "Bob", "role": "child"}],
+            "chores": [{**chore_spec, "assigned_to": ["bob"]}],
+        }
+    )
+
+
+def test_monthly_streak_walks_back_across_months(app):
+    today = date(2026, 5, 15)
+    cfg = _config_with(
+        {
+            "key": "rent",
+            "name": "Rent",
+            "points": 5,
+            "frequency": "monthly",
+            "day_of_month": 15,
+        }
+    )
+    with app.app_context():
+        for d in [date(2026, 5, 15), date(2026, 4, 15), date(2026, 3, 15), date(2026, 2, 15)]:
+            _add("rent", d)
+        db.session.commit()
+        assert streak(db.session, cfg, "rent", "bob", today) == 4
+
+
+def test_annual_streak_walks_back_across_years(app):
+    today = date(2026, 4, 1)
+    cfg = _config_with(
+        {
+            "key": "smoke",
+            "name": "Smoke alarms",
+            "points": 5,
+            "frequency": "annual",
+            "month": 4,
+            "day_of_month": 1,
+        }
+    )
+    with app.app_context():
+        for d in [date(2026, 4, 1), date(2025, 4, 1), date(2024, 4, 1)]:
+            _add("smoke", d)
+        db.session.commit()
+        assert streak(db.session, cfg, "smoke", "bob", today) == 3
+
+
+def test_monthly_streak_breaks_on_missing_month(app):
+    today = date(2026, 5, 15)
+    cfg = _config_with(
+        {
+            "key": "rent",
+            "name": "Rent",
+            "points": 5,
+            "frequency": "monthly",
+            "day_of_month": 15,
+        }
+    )
+    with app.app_context():
+        # Skip April; March and May completed.
+        for d in [date(2026, 5, 15), date(2026, 3, 15)]:
+            _add("rent", d)
+        db.session.commit()
+        assert streak(db.session, cfg, "rent", "bob", today) == 1
 
 
 def test_missed_count(app):

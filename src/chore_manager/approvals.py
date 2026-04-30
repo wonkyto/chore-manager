@@ -11,7 +11,7 @@ from .models import AdhocChore, ChoreCompletion, Redemption
 class InsufficientPointsError(Exception):
     def __init__(self, person_key: str, cost: int, available: int) -> None:
         super().__init__(
-            f"insufficient points for {person_key}: need {cost}, have {available} available"
+            f"insufficient Chorecoins for {person_key}: need {cost}, have {available} available"
         )
         self.person_key = person_key
         self.cost = cost

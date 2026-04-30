@@ -2,7 +2,7 @@
   {% for r in rewards %}
   <li class="flex items-center justify-between gap-2 py-1">
     <span class="text-sm">{{ r.name }}
-      <span class="text-slate-500 text-xs">({{ r.cost }} pts)</span>
+      <span class="text-slate-500 text-xs inline-flex items-center gap-0.5">({{ r.cost }} <img src="{{ url_for('static', filename='chore-coin.svg') }}" alt="Chorecoins" class="inline-block w-3.5 h-3.5">)</span>
     </span>
     <form method="post" action="{{ url_for('main.redeem', reward_key=r.key, person_key=person_key) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

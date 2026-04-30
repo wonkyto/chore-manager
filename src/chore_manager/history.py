@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from .config import FamilyConfig
 from .models import ChoreCompletion
-from .schedule import is_scheduled_on
+from .schedule import is_scheduled_on, previous_occurrence
 
 
 def _completions_for(session: Session, chore_key: str, person_key: str) -> set[date]:
@@ -32,27 +32,18 @@ def streak(
         return 0
 
     completed = _completions_for(session, chore_key, person_key)
+
+    # If today is a scheduled occurrence that hasn't been ticked off yet,
+    # don't count it against the streak - start from the previous occurrence.
+    if is_scheduled_on(chore, today) and today not in completed:
+        cursor = previous_occurrence(chore, today - timedelta(days=1))
+    else:
+        cursor = previous_occurrence(chore, today)
+
     count = 0
-    cursor = today
-    safety = 0
-
-    while safety < 365:
-        safety += 1
-
-        if not is_scheduled_on(chore, cursor):
-            cursor -= timedelta(days=1)
-            continue
-
-        if cursor == today and cursor not in completed:
-            cursor -= timedelta(days=1)
-            continue
-
-        if cursor in completed:
-            count += 1
-            cursor -= timedelta(days=1)
-        else:
-            break
-
+    while cursor is not None and cursor in completed:
+        count += 1
+        cursor = previous_occurrence(chore, cursor - timedelta(days=1))
     return count
 
 

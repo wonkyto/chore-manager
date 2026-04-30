@@ -1,20 +1,20 @@
 # Chore Manager
 
-A household chore tracker for families. Each person gets a column showing their tasks for the day. Tap a chore to mark it done; it turns green and earns points. Kids redeem points for rewards (screen time, pocket money, etc.) which queue for a parent to approve or deny via PIN.
+A household chore tracker for families. Each person gets a column showing their tasks for the day. Tap a chore to mark it done; it turns green and earns Chorecoins. Kids redeem Chorecoins for rewards (screen time, pocket money, etc.) which queue for a parent to approve or deny via PIN.
 
 ## Features
 
 - Today view with one column per family member
-- Daily and weekly chores (with specific days of the week)
-- Points awarded per chore, tallied live without a page refresh
-- Streak counter when a chore is completed on consecutive scheduled days
-- Reward redemption with parent approval - points are held until approved or denied
+- Flexible chore scheduling: daily, weekly, fortnightly, monthly, annual, or every N days
+- Chorecoins awarded per chore, tallied live without a page refresh
+- Streak counter when a chore is completed on consecutive scheduled occurrences
+- Reward redemption with parent approval - Chorecoins are held until approved or denied
 - Parental PIN lock - historical edits and redemption approvals require a PIN, with a short unlock window (configurable, default 60 seconds)
 - Navigate back and forward through days to review history or preview upcoming chores
 - Per-device "viewing as" mode via cookie - set it on a personal device to see only your column
 - App and family config live in YAML files; changes are picked up on the next page load with no restart
-- Ad-hoc tasks - parents can add one-off tasks with custom points; the name field suggests all previously used task names and auto-fills points for known chores
-- Per-person stats page (`/stats/<person_key>`) showing streak, 30-day completion rate, all-time points, weekly trend, a 4-week points bar chart, and a per-chore breakdown
+- Ad-hoc tasks - parents can add one-off tasks with custom Chorecoins; the name field suggests all previously used task names and auto-fills the value for known chores
+- Per-person stats page (`/stats/<person_key>`) showing streak, 30-day completion rate, all-time Chorecoins, weekly trend, a 4-week chart, and a per-chore breakdown
 
 ## Setup
 
@@ -86,7 +86,63 @@ rewards:
     cost: 20
 ```
 
-Valid frequencies are `daily` and `weekly`. Weekly chores take a `days` list using `mon`, `tue`, `wed`, `thu`, `fri`, `sat`, `sun`.
+The `points` field sets how many Chorecoins the chore is worth.
+
+#### Frequencies
+
+| frequency      | required fields                                  | example                   |
+| -------------- | ------------------------------------------------ | ------------------------- |
+| `daily`        | -                                                | every day                 |
+| `weekly`       | `days` (list of `mon`...`sun`)                   | mon/wed/fri               |
+| `fortnightly`  | `days`, `anchor_date` (ISO date in an "on" week) | bins every other Tuesday  |
+| `monthly`      | `day_of_month` (1-31)                            | rent on the 1st           |
+| `annual`       | `month` (1-12), `day_of_month` (1-31)            | smoke alarms on 1 April   |
+| `every_n_days` | `every_days` (>= 2), `anchor_date`               | water plants every 3 days |
+
+`day_of_month` is clamped to the actual length of the month, so `31` always means "last day of the month" (April lands on the 30th, February on the 28th or 29th). The same applies to annual chores - `month: 2, day_of_month: 29` fires on 28 Feb in non-leap years.
+
+For `fortnightly`, `anchor_date` is any date that falls in an "on" week; the app works out which fortnights are due from there. For `every_n_days`, `anchor_date` is the first occurrence - the chore doesn't appear before that date.
+
+```yaml
+chores:
+  - key: bins
+    name: Put bins out
+    points: 10
+    frequency: fortnightly
+    days: [tue]
+    anchor_date: 2026-05-05
+    assigned_to: [alice]
+
+  - key: rent
+    name: Pay rent
+    points: 5
+    frequency: monthly
+    day_of_month: 1
+    assigned_to: [alice]
+
+  - key: filter
+    name: Replace AC filter
+    points: 15
+    frequency: monthly
+    day_of_month: 31         # always the last day of the month
+    assigned_to: [alice]
+
+  - key: smoke
+    name: Test smoke alarms
+    points: 20
+    frequency: annual
+    month: 4
+    day_of_month: 1
+    assigned_to: [alice]
+
+  - key: water
+    name: Water plants
+    points: 3
+    frequency: every_n_days
+    every_days: 3
+    anchor_date: 2026-04-30
+    assigned_to: [bob]
+```
 
 ### Data storage
 
