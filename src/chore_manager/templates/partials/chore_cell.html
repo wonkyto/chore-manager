@@ -38,6 +38,11 @@
       </div>
       <div class="text-xs text-slate-600 mt-1 flex items-center gap-2 flex-wrap">
         <span class="inline-flex items-center gap-0.5">{{ item.points }} <img src="{{ url_for('static', filename='chore-coin.svg') }}" alt="Chorecoins" class="inline-block w-3.5 h-3.5"></span>
+        {% if item.is_reassigned and people_by_key and item.original_person_key in people_by_key %}
+        <span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-semibold" title="Reassigned for this day only">
+          from {{ people_by_key[item.original_person_key].name }}
+        </span>
+        {% endif %}
         {% if skipped %}
         <span class="text-slate-400 italic">skipped</span>
         {% elif item.streak >= 2 %}
@@ -49,28 +54,48 @@
     </div>
   </div>
   {% if pin_unlocked and not item.done %}
-  {% if skipped %}
-  <button
-    hx-post="{{ url_for('main.unskip', chore_key=item.chore_key, person_key=person.key) }}"
-    hx-vals='{"date": "{{ view_date.isoformat() }}"}'
-    hx-target="#chore-{{ item.chore_key }}-{{ person.key }}"
-    hx-swap="outerHTML"
-    class="shrink-0 text-slate-400 hover:text-slate-700 p-1" title="Restore">
-    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-    </svg>
-  </button>
-  {% else %}
-  <button
-    hx-post="{{ url_for('main.skip', chore_key=item.chore_key, person_key=person.key) }}"
-    hx-vals='{"date": "{{ view_date.isoformat() }}"}'
-    hx-target="#chore-{{ item.chore_key }}-{{ person.key }}"
-    hx-swap="outerHTML"
-    class="shrink-0 text-slate-300 hover:text-rose-500 p-1" title="Skip today">
-    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-    </svg>
-  </button>
-  {% endif %}
+  <div class="shrink-0 flex items-center gap-1">
+    {% if people and people|length > 1 %}
+    <form method="post" action="{{ url_for('main.reassign', chore_key=item.chore_key, original_person=item.original_person_key) }}" class="shrink-0">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="date" value="{{ view_date.isoformat() }}">
+      <select name="to_person" onchange="this.form.submit()"
+        class="text-xs border rounded px-1 py-0.5 bg-white text-slate-600 max-w-[110px]"
+        title="Reassign for {{ view_date.strftime('%-d %b') }}">
+        <option value="">Move to...</option>
+        {% for p in people %}
+          {% if item.is_reassigned and p.key == item.original_person_key %}
+          <option value="{{ p.key }}">Back to {{ p.name }}</option>
+          {% elif p.key != person.key %}
+          <option value="{{ p.key }}">{{ p.name }}</option>
+          {% endif %}
+        {% endfor %}
+      </select>
+    </form>
+    {% endif %}
+    {% if skipped %}
+    <button
+      hx-post="{{ url_for('main.unskip', chore_key=item.chore_key, person_key=person.key) }}"
+      hx-vals='{"date": "{{ view_date.isoformat() }}"}'
+      hx-target="#chore-{{ item.chore_key }}-{{ person.key }}"
+      hx-swap="outerHTML"
+      class="shrink-0 text-slate-400 hover:text-slate-700 p-1" title="Restore">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+      </svg>
+    </button>
+    {% else %}
+    <button
+      hx-post="{{ url_for('main.skip', chore_key=item.chore_key, person_key=person.key) }}"
+      hx-vals='{"date": "{{ view_date.isoformat() }}"}'
+      hx-target="#chore-{{ item.chore_key }}-{{ person.key }}"
+      hx-swap="outerHTML"
+      class="shrink-0 text-slate-300 hover:text-rose-500 p-1" title="Skip today">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+      </svg>
+    </button>
+    {% endif %}
+  </div>
   {% endif %}
 </li>

@@ -29,7 +29,15 @@ from .approvals import (
 from .config import AppConfig, FamilyConfig, load_app_config, load_config
 from .db import db
 from .history import streak
-from .models import AdhocChore, Adjustment, ChoreCompletion, ChoreSkip, PersonSetting, Redemption
+from .models import (
+    AdhocChore,
+    Adjustment,
+    ChoreCompletion,
+    ChoreReassignment,
+    ChoreSkip,
+    PersonSetting,
+    Redemption,
+)
 from .schedule import is_scheduled_on
 from .stats import (
     best_day_of_week,
@@ -151,16 +159,46 @@ def _build_item(person_key: str, chore_key: str, view_date: date, today: date) -
         )
         is not None
     )
+    reassignment = db.session.scalar(
+        select(ChoreReassignment).where(
+            ChoreReassignment.chore_key == chore_key,
+            ChoreReassignment.new_person_key == person_key,
+            ChoreReassignment.on_date == view_date,
+        )
+    )
+    is_reassigned = reassignment is not None
+    original_person_key = reassignment.original_person_key if is_reassigned else person_key
     return {
         "chore_key": chore_key,
         "name": chore.name,
         "points": chore.points,
         "done": done,
         "skipped": skipped,
+        "is_reassigned": is_reassigned,
+        "original_person_key": original_person_key,
         "streak": streak(db.session, _config(), chore_key, person_key, today)
-        if view_date == today
+        if view_date == today and not is_reassigned
         else 0,
     }
+
+
+_AwayMap = dict[tuple[str, str], str]
+_ToMap = dict[str, list[tuple[str, str]]]
+
+
+def _load_reassignments(d: date) -> tuple[_AwayMap, _ToMap]:
+    """Returns (away_map, to_map) for the date.
+
+    away_map: (chore_key, original_person_key) -> new_person_key (chores moved away)
+    to_map: new_person_key -> list of (chore_key, original_person_key) (chores received)
+    """
+    rows = db.session.scalars(select(ChoreReassignment).where(ChoreReassignment.on_date == d)).all()
+    away: dict[tuple[str, str], str] = {}
+    to: dict[str, list[tuple[str, str]]] = {}
+    for r in rows:
+        away[(r.chore_key, r.original_person_key)] = r.new_person_key
+        to.setdefault(r.new_person_key, []).append((r.chore_key, r.original_person_key))
+    return away, to
 
 
 @bp.get("/")
@@ -191,14 +229,22 @@ def index():
     if viewer:
         visible_people = [p for p in config.people if p.key == viewer]
 
+    away_map, to_map = _load_reassignments(view_date)
+    chores_by_key = {c.key: c for c in config.chores}
+
     columns = []
     for person in visible_people:
         chore_items = []
+        seen: set[str] = set()
+
         for chore in config.chores:
             if person.key not in chore.assigned_to:
                 continue
             if not is_scheduled_on(chore, view_date):
                 continue
+            if (chore.key, person.key) in away_map:
+                continue
+            seen.add(chore.key)
             chore_items.append(
                 {
                     "chore_key": chore.key,
@@ -206,11 +252,34 @@ def index():
                     "points": chore.points,
                     "done": (chore.key, person.key) in completed_keys,
                     "skipped": (chore.key, person.key) in skipped_keys,
+                    "is_reassigned": False,
+                    "original_person_key": person.key,
                     "streak": streak(db.session, config, chore.key, person.key, today)
                     if is_today
                     else 0,
                 }
             )
+
+        for chore_key, original_pk in to_map.get(person.key, []):
+            chore = chores_by_key.get(chore_key)
+            if chore is None or chore.key in seen:
+                continue
+            if not is_scheduled_on(chore, view_date):
+                continue
+            seen.add(chore.key)
+            chore_items.append(
+                {
+                    "chore_key": chore.key,
+                    "name": chore.name,
+                    "points": chore.points,
+                    "done": (chore.key, person.key) in completed_keys,
+                    "skipped": (chore.key, person.key) in skipped_keys,
+                    "is_reassigned": True,
+                    "original_person_key": original_pk,
+                    "streak": 0,
+                }
+            )
+
         columns.append(
             {
                 "person": person,
@@ -294,16 +363,51 @@ def index():
     )
 
 
+def _has_responsibility(chore_key: str, person_key: str, on_date: date, *, chore=None) -> bool:
+    """Person is responsible for chore on date if YAML assigns them and not reassigned away,
+    or if a reassignment to them exists for that date."""
+    if chore is None:
+        chore = _chore(chore_key)
+    if chore is None:
+        return False
+    if person_key in chore.assigned_to:
+        moved_away = (
+            db.session.scalar(
+                select(ChoreReassignment).where(
+                    ChoreReassignment.chore_key == chore_key,
+                    ChoreReassignment.original_person_key == person_key,
+                    ChoreReassignment.on_date == on_date,
+                )
+            )
+            is not None
+        )
+        if not moved_away:
+            return True
+    return (
+        db.session.scalar(
+            select(ChoreReassignment).where(
+                ChoreReassignment.chore_key == chore_key,
+                ChoreReassignment.new_person_key == person_key,
+                ChoreReassignment.on_date == on_date,
+            )
+        )
+        is not None
+    )
+
+
 @bp.post("/toggle/<chore_key>/<person_key>")
 def toggle(chore_key: str, person_key: str):
     chore = _chore(chore_key)
     person = _person(person_key)
-    if chore is None or person is None or person_key not in chore.assigned_to:
+    if chore is None or person is None:
         abort(404)
 
     today = _today()
     date_str = request.form.get("date")
     toggle_date = date.fromisoformat(date_str) if date_str else today
+
+    if not _has_responsibility(chore_key, person_key, toggle_date, chore=chore):
+        abort(404)
 
     if toggle_date != today:
         app_cfg = _load_app_cfg()
@@ -343,6 +447,7 @@ def toggle(chore_key: str, person_key: str):
 
     item = _build_item(person_key, chore_key, toggle_date, today)
     new_available = available_points(db.session, person_key)
+    cfg = _config()
     cell = render_template(
         "partials/chore_cell.html",
         item=item,
@@ -350,6 +455,8 @@ def toggle(chore_key: str, person_key: str):
         is_today=toggle_date == today,
         pin_unlocked=_pin_unlocked_for(_load_app_cfg()),
         view_date=toggle_date,
+        people=cfg.people,
+        people_by_key={p.key: p for p in cfg.people},
     )
     balance = render_template(
         "partials/points_balance.html",
@@ -416,6 +523,8 @@ def skip(chore_key: str, person_key: str):
     today = _today()
     date_str = request.form.get("date")
     skip_date = date.fromisoformat(date_str) if date_str else today
+    if not _has_responsibility(chore_key, person_key, skip_date, chore=chore):
+        abort(404)
     existing = db.session.scalar(
         select(ChoreSkip).where(
             ChoreSkip.chore_key == chore_key,
@@ -427,6 +536,7 @@ def skip(chore_key: str, person_key: str):
         db.session.add(ChoreSkip(chore_key=chore_key, person_key=person_key, skip_date=skip_date))
         db.session.commit()
     item = _build_item(person_key, chore_key, skip_date, today)
+    cfg = _config()
     return render_template(
         "partials/chore_cell.html",
         item=item,
@@ -434,6 +544,8 @@ def skip(chore_key: str, person_key: str):
         is_today=skip_date == today,
         pin_unlocked=_pin_unlocked_for(_load_app_cfg()),
         view_date=skip_date,
+        people=cfg.people,
+        people_by_key={p.key: p for p in cfg.people},
     )
 
 
@@ -448,6 +560,8 @@ def unskip(chore_key: str, person_key: str):
     today = _today()
     date_str = request.form.get("date")
     skip_date = date.fromisoformat(date_str) if date_str else today
+    if not _has_responsibility(chore_key, person_key, skip_date, chore=chore):
+        abort(404)
     existing = db.session.scalar(
         select(ChoreSkip).where(
             ChoreSkip.chore_key == chore_key,
@@ -459,6 +573,7 @@ def unskip(chore_key: str, person_key: str):
         db.session.delete(existing)
         db.session.commit()
     item = _build_item(person_key, chore_key, skip_date, today)
+    cfg = _config()
     return render_template(
         "partials/chore_cell.html",
         item=item,
@@ -466,6 +581,8 @@ def unskip(chore_key: str, person_key: str):
         is_today=skip_date == today,
         pin_unlocked=_pin_unlocked_for(_load_app_cfg()),
         view_date=skip_date,
+        people=cfg.people,
+        people_by_key={p.key: p for p in cfg.people},
     )
 
 
@@ -562,6 +679,53 @@ def adhoc_delete(adhoc_id: int):
     else:
         redirect_url = url_for("main.index", date=due.isoformat())
     return redirect(redirect_url)
+
+
+@bp.post("/reassign/<chore_key>/<original_person>")
+def reassign(chore_key: str, original_person: str):
+    if not _pin_unlocked_for(_load_app_cfg()):
+        abort(403)
+    chore = _chore(chore_key)
+    if chore is None or original_person not in chore.assigned_to:
+        abort(400)
+    to_person = request.form.get("to_person", "")
+    date_str = request.form.get("date", "")
+    try:
+        on_date = date.fromisoformat(date_str)
+    except ValueError:
+        abort(400)
+    if _person(to_person) is None:
+        abort(400)
+
+    existing = db.session.scalar(
+        select(ChoreReassignment).where(
+            ChoreReassignment.chore_key == chore_key,
+            ChoreReassignment.original_person_key == original_person,
+            ChoreReassignment.on_date == on_date,
+        )
+    )
+    if to_person == original_person:
+        if existing:
+            db.session.delete(existing)
+            db.session.commit()
+    else:
+        if existing:
+            existing.new_person_key = to_person
+        else:
+            db.session.add(
+                ChoreReassignment(
+                    chore_key=chore_key,
+                    original_person_key=original_person,
+                    new_person_key=to_person,
+                    on_date=on_date,
+                )
+            )
+        db.session.commit()
+
+    today = _today()
+    if on_date == today:
+        return redirect(url_for("main.index"))
+    return redirect(url_for("main.index", date=on_date.isoformat()))
 
 
 _ADJUSTMENT_REASON_MAX = 200

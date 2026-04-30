@@ -71,6 +71,20 @@ class Redemption(Base):
     resolved_note: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
 
+class ChoreReassignment(Base):
+    __tablename__ = "chore_reassignment"
+    __table_args__ = (
+        UniqueConstraint("chore_key", "original_person_key", "on_date", name="uq_reassignment"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    chore_key: Mapped[str] = mapped_column(String(64), index=True)
+    original_person_key: Mapped[str] = mapped_column(String(64), index=True)
+    new_person_key: Mapped[str] = mapped_column(String(64), index=True)
+    on_date: Mapped[date] = mapped_column(Date, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
 class Adjustment(Base):
     __tablename__ = "adjustment"
 
