@@ -203,6 +203,134 @@ Version is set at the top of the Makefile. Both the versioned tag and `latest` a
 
 Static assets (Tailwind CSS, htmx, canvas-confetti) are vendored under `src/chore_manager/static/` so the app has no runtime CDN dependency. `make css` downloads the standalone Tailwind CLI on first run and writes `static/app.css` from the templates.
 
+## Migrating to PostgreSQL
+
+The app uses SQLAlchemy throughout, so switching from SQLite to PostgreSQL is mosly a matter of pointing it at a different database URL. No query rewrites are neeed.
+
+### What already works
+
+The database URL is read from the `CHORE_DB_URL` environment variable. SQLite is sed when it isn't set. Set it to a Postgres connection string and the ORM will us that instead:
+
+```
+CHORE_DB_URL=postgresql+psycopg2://user:password@host:5432/chore_manager          
+```
+
+The SQLite-specific tuning (`WAL mode`, `BEGIN IMMEDIATE`, `busy_timeout`) is skiped automatically when the dialect isn't SQLite, so no code changes are needed thre.
+
+### What needs attention
+
+**Driver dependency** - Add `psycopg2-binary` (or `psycopg[binary]` for the newerv3 driver) to `pyproject.toml`:
+
+```toml
+dependencies = [                                                                  
+    ...                                                                           
+    "psycopg2-binary>=2.9",                                                       
+]                                                                                 
+```
+
+Rebuild the Docker image after changing this.
+
+**Schema migrations** - The built-in `_migrate()` function uses SQLite `PRAGMA tale_info()` to detect missing columns and add them. That won't run on Postgres. Fo SQLite this is fine because schema changes are rare and the migration list is shrt. For Postgres you'd want a proper migration tool. [Alembic](https://alembic.sqalchemy.org/) is the standard choice with SQLAlchemy - it can autogenerate migraton scripts from model changes and apply them in order. To get started:
+
+```bash
+uv add alembic                                                                    
+uv run alembic init alembic                                                       
+# edit alembic/env.py to point at your models and CHORE_DB_URL                    
+uv run alembic revision --autogenerate -m "initial"                               
+uv run alembic upgrade head                                                       
+```
+
+**Concurrency** - SQLite serialises writes with `BEGIN IMMEDIATE` to prevent doube-spend on redemptions. PostgreSQL handles concurrent writes natively via its ownMVCC locking, so that protection is already covered without any extra configuratin.
+
+**`db.create_all()` on first run** - For a fresh Postgres database, `db.create_al()` still runs on startup and will create all tables correctly. After that, schem changes should go through Alembic rather than `create_all`.
+
+### docker-compose.yml changes
+
+Add the URL and a Postgres service, or point at an external Postgres instance:
+
+```yaml
+services:                                                                         
+  chore-manager:                                                                  
+    environment:                                                                  
+      CHORE_DATA_DIR: /app/data                                                   
+      CHORE_DB_URL: postgresql+psycopg2://chore:secret@db:5432/chore_manager      
+      CHORE_AUDIT_LOG: /app/log/audit.log                                         
+                                                                                  
+  db:                                                                             
+    image: postgres:16                                                            
+    restart: unless-stopped                                                       
+    environment:                                                                  
+      POSTGRES_DB: chore_manager                                                  
+      POSTGRES_USER: chore                                                        
+      POSTGRES_PASSWORD: secret                                                   
+    volumes:                                                                      
+      - ./pgdata:/var/lib/postgresql/data                                         
+```
+
+Remove the `./data:/app/data` volume mount once the SQLite file is no longer needd. The `instance/` mount for the session secret key can stay.
+
+### What already works
+
+The database URL is read from the `CHORE_DB_URL` environment variable. SQLite is used when it isn't set. Set it to a Postgres connection string and the ORM will use that instead:
+
+```
+CHORE_DB_URL=postgresql+psycopg2://user:password@host:5432/chore_manager
+```
+
+The SQLite-specific tuning (`WAL mode`, `BEGIN IMMEDIATE`, `busy_timeout`) is skipped automatically when the dialect isn't SQLite, so no code changes are needed there.
+
+### What needs attention
+
+**Driver dependency** - Add `psycopg2-binary` (or `psycopg[binary]` for the newer v3 driver) to `pyproject.toml`:
+
+```toml
+dependencies = [
+    ...
+    "psycopg2-binary>=2.9",
+]
+```
+
+Rebuild the Docker image after changing this.
+
+**Schema migrations** - The built-in `_migrate()` function uses SQLite `PRAGMA table_info()` to detect missing columns and add them. That won't run on Postgres. For SQLite this is fine because schema changes are rare and the migration list is short. For Postgres you'd want a proper migration tool. [Alembic](https://alembic.sqlalchemy.org/) is the standard choice with SQLAlchemy - it can autogenerate migration scripts from model changes and apply them in order. To get started:
+
+```bash
+uv add alembic
+uv run alembic init alembic
+# edit alembic/env.py to point at your models and CHORE_DB_URL
+uv run alembic revision --autogenerate -m "initial"
+uv run alembic upgrade head
+```
+
+**Concurrency** - SQLite serialises writes with `BEGIN IMMEDIATE` to prevent double-spend on redemptions. PostgreSQL handles concurrent writes natively via its own MVCC locking, so that protection is already covered without any extra configuration.
+
+**`db.create_all()` on first run** - For a fresh Postgres database, `db.create_all()` still runs on startup and will create all tables correctly. After that, schema changes should go through Alembic rather than `create_all`.
+
+### docker-compose.prod.yml changes
+
+Add the URL and a Postgres service, or point at an external Postgres instance:
+
+```yaml
+services:
+  chore-manager:
+    environment:
+      CHORE_DATA_DIR: /app/data
+      CHORE_DB_URL: postgresql+psycopg2://chore:secret@db:5432/chore_manager
+      CHORE_AUDIT_LOG: /app/log/audit.log
+
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: chore_manager
+      POSTGRES_USER: chore
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+```
+
+Remove the `./data:/app/data` volume mount once the SQLite file is no longer needed. The `instance/` mount for the session secret key can stay.
+
 ## iOS home screen
 
 In Safari, tap Share -> Add to Home Screen. The app uses `apple-touch-icon.png` as the icon and the `app_name` from `app.yaml` as the label. When launched from the home screen it runs without the Safari browser chrome.
