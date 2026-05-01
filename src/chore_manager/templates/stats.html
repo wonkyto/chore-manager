@@ -190,5 +190,55 @@
 
   </div>
 
+  {# --- Achievements --- #}
+  {% if achievements %}
+  {% set tier_colours = {
+    'bronze': {'bg': '#fef3c7', 'fg': '#b45309'},
+    'silver': {'bg': '#e2e8f0', 'fg': '#475569'},
+    'gold':   {'bg': '#fef08a', 'fg': '#a16207'},
+  } %}
+  {% set earned_count = achievements | selectattr('earned') | list | length %}
+  <div class="bg-white rounded-xl shadow-sm border p-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-sm font-semibold text-slate-700">Achievements</h2>
+      <span class="text-xs text-slate-500">{{ earned_count }} of {{ achievements | length }}</span>
+    </div>
+    <div class="grid grid-cols-3 sm:grid-cols-4 gap-3">
+      {% for ev in achievements %}
+        {% set c = tier_colours[ev.achievement.tier] %}
+        <div
+          class="rounded-lg border p-3 flex flex-col items-center text-center gap-1"
+          style="
+            background-color: {{ c.bg if ev.earned else '#f8fafc' }};
+            border-color: {{ c.fg if ev.earned else '#e2e8f0' }};
+            opacity: {{ '1' if ev.earned else '0.55' }};
+          "
+          title="{{ ev.achievement.description }}"
+        >
+          <svg class="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+               style="color: {{ c.fg if ev.earned else '#94a3b8' }}">
+            <circle cx="12" cy="9" r="6"/>
+            <path d="M9 14.5l-2 6.5 5-3 5 3-2-6.5"/>
+            <circle cx="12" cy="9" r="2.5" fill="currentColor" opacity="0.3"/>
+          </svg>
+          <p class="text-xs font-semibold leading-tight"
+             style="color: {{ c.fg if ev.earned else '#64748b' }}">
+            {{ ev.achievement.name }}
+          </p>
+          {% if ev.target is not none and not ev.earned %}
+          <p class="text-[10px] text-slate-500">{{ ev.progress }}/{{ ev.target }}</p>
+          {% elif ev.earned %}
+          <p class="text-[10px] uppercase tracking-wide font-bold"
+             style="color: {{ c.fg }}">{{ ev.achievement.tier }}</p>
+          {% else %}
+          <p class="text-[10px] text-slate-400">Locked</p>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
 </main>
 {% endblock %}

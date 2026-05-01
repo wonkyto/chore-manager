@@ -39,6 +39,7 @@ class _ChoreBase(BaseModel):
     name: str
     points: int = Field(ge=0)
     assigned_to: list[str]
+    claim_first: bool = False
 
 
 class DailyChore(_ChoreBase):
@@ -128,6 +129,7 @@ class AppConfig(BaseModel):
     parent_pin: str | None = None
     parent_pin_hash: str | None = None
     pin_timeout_seconds: int = 60
+    day_rollover_hour: int = Field(default=0, ge=0, le=23)
 
     def verify_pin(self, candidate: str) -> bool:
         if self.parent_pin_hash:

@@ -9,6 +9,7 @@ from flask_wtf.csrf import CSRFProtect
 from sqlalchemy import event
 from sqlalchemy.exc import OperationalError
 
+from .audit import configure_audit_logger, resolve_audit_log_path
 from .config import load_app_config, load_config
 from .db import db
 from .routes import bp
@@ -55,6 +56,8 @@ def create_app(
     csrf.init_app(app)
     app.register_blueprint(bp)
 
+    configure_audit_logger(resolve_audit_log_path())
+
     with app.app_context():
         _configure_sqlite(db.engine)
         db.create_all()
@@ -88,6 +91,7 @@ def _migrate(db) -> None:
     migrations = [
         ("adhoc_chore", "start_date", "ALTER TABLE adhoc_chore ADD COLUMN start_date DATE"),
         ("adhoc_chore", "completed_date", "ALTER TABLE adhoc_chore ADD COLUMN completed_date DATE"),
+        ("chore_skip", "created_at", "ALTER TABLE chore_skip ADD COLUMN created_at DATETIME"),
     ]
     with db.engine.connect() as conn:
         for table, column, sql in migrations:

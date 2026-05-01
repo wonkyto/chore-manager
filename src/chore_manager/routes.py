@@ -18,6 +18,7 @@ from flask import (
 )
 from sqlalchemy import func, or_, select
 
+from .achievements import evaluate as evaluate_achievements
 from .approvals import (
     InsufficientPointsError,
     available_points,
@@ -26,6 +27,7 @@ from .approvals import (
     request_redemption,
     resolve_redemption,
 )
+from .audit import audit_log, build_timeline
 from .config import AppConfig, FamilyConfig, load_app_config, load_config
 from .db import db
 from .history import streak
@@ -35,6 +37,7 @@ from .models import (
     ChoreCompletion,
     ChoreReassignment,
     ChoreSkip,
+    Holiday,
     PersonSetting,
     Redemption,
 )
@@ -114,7 +117,8 @@ def _avatar_seed(person_key: str) -> str:
 
 def _today() -> date:
     tz = ZoneInfo(current_app.config["TIMEZONE"])
-    return datetime.now(tz).date()
+    rollover = _load_app_cfg().day_rollover_hour
+    return (datetime.now(tz) - timedelta(hours=rollover)).date()
 
 
 def _parse_view_date(param: str | None, today: date) -> date:
@@ -182,6 +186,29 @@ def _build_item(person_key: str, chore_key: str, view_date: date, today: date) -
     }
 
 
+def _holiday_for(person_key: str, on: date) -> Holiday | None:
+    """Returns the holiday active on `on` for `person_key`, or None.
+    Family-wide holidays (person_key IS NULL) cover everyone."""
+    return db.session.scalar(
+        select(Holiday)
+        .where(
+            Holiday.start_date <= on,
+            Holiday.end_date >= on,
+            (Holiday.person_key == person_key) | (Holiday.person_key.is_(None)),
+        )
+        .order_by(Holiday.id)
+        .limit(1)
+    )
+
+
+def _holidays_active_on(d: date) -> list[Holiday]:
+    return list(
+        db.session.scalars(
+            select(Holiday).where(Holiday.start_date <= d, Holiday.end_date >= d)
+        ).all()
+    )
+
+
 _AwayMap = dict[tuple[str, str], str]
 _ToMap = dict[str, list[tuple[str, str]]]
 
@@ -212,12 +239,13 @@ def index():
     prev_date = view_date - timedelta(days=1)
     next_date = view_date + timedelta(days=1)
 
-    completed_keys = {
-        (row.chore_key, row.person_key)
-        for row in db.session.scalars(
+    completion_rows = list(
+        db.session.scalars(
             select(ChoreCompletion).where(ChoreCompletion.completed_on == view_date)
         ).all()
-    }
+    )
+    completed_keys = {(row.chore_key, row.person_key) for row in completion_rows}
+    claim_winner = {row.chore_key: row.person_key for row in completion_rows}
     skipped_keys = {
         (row.chore_key, row.person_key)
         for row in db.session.scalars(
@@ -234,56 +262,65 @@ def index():
 
     columns = []
     for person in visible_people:
-        chore_items = []
-        seen: set[str] = set()
+        holiday = _holiday_for(person.key, view_date)
+        chore_items: list[dict] = []
+        if holiday is None:
+            seen: set[str] = set()
 
-        for chore in config.chores:
-            if person.key not in chore.assigned_to:
-                continue
-            if not is_scheduled_on(chore, view_date):
-                continue
-            if (chore.key, person.key) in away_map:
-                continue
-            seen.add(chore.key)
-            chore_items.append(
-                {
-                    "chore_key": chore.key,
-                    "name": chore.name,
-                    "points": chore.points,
-                    "done": (chore.key, person.key) in completed_keys,
-                    "skipped": (chore.key, person.key) in skipped_keys,
-                    "is_reassigned": False,
-                    "original_person_key": person.key,
-                    "streak": streak(db.session, config, chore.key, person.key, today)
-                    if is_today
-                    else 0,
-                }
-            )
+            for chore in config.chores:
+                if person.key not in chore.assigned_to:
+                    continue
+                if not is_scheduled_on(chore, view_date):
+                    continue
+                if (chore.key, person.key) in away_map:
+                    continue
+                if chore.claim_first:
+                    winner = claim_winner.get(chore.key)
+                    if winner is not None and winner != person.key:
+                        continue
+                seen.add(chore.key)
+                chore_items.append(
+                    {
+                        "chore_key": chore.key,
+                        "name": chore.name,
+                        "points": chore.points,
+                        "done": (chore.key, person.key) in completed_keys,
+                        "skipped": (chore.key, person.key) in skipped_keys,
+                        "is_reassigned": False,
+                        "original_person_key": person.key,
+                        "claim_first": chore.claim_first,
+                        "streak": streak(db.session, config, chore.key, person.key, today)
+                        if is_today and not chore.claim_first
+                        else 0,
+                    }
+                )
 
-        for chore_key, original_pk in to_map.get(person.key, []):
-            chore = chores_by_key.get(chore_key)
-            if chore is None or chore.key in seen:
-                continue
-            if not is_scheduled_on(chore, view_date):
-                continue
-            seen.add(chore.key)
-            chore_items.append(
-                {
-                    "chore_key": chore.key,
-                    "name": chore.name,
-                    "points": chore.points,
-                    "done": (chore.key, person.key) in completed_keys,
-                    "skipped": (chore.key, person.key) in skipped_keys,
-                    "is_reassigned": True,
-                    "original_person_key": original_pk,
-                    "streak": 0,
-                }
-            )
+            for chore_key, original_pk in to_map.get(person.key, []):
+                chore = chores_by_key.get(chore_key)
+                if chore is None or chore.key in seen:
+                    continue
+                if not is_scheduled_on(chore, view_date):
+                    continue
+                seen.add(chore.key)
+                chore_items.append(
+                    {
+                        "chore_key": chore.key,
+                        "name": chore.name,
+                        "points": chore.points,
+                        "done": (chore.key, person.key) in completed_keys,
+                        "skipped": (chore.key, person.key) in skipped_keys,
+                        "is_reassigned": True,
+                        "original_person_key": original_pk,
+                        "claim_first": False,
+                        "streak": 0,
+                    }
+                )
 
         columns.append(
             {
                 "person": person,
                 "chores": chore_items,
+                "holiday": holiday,
                 "available": available_points(db.session, person.key),
                 "earned": points_earned(db.session, person.key),
                 "pending": points_in_status(db.session, person.key, "pending"),
@@ -365,11 +402,22 @@ def index():
 
 def _has_responsibility(chore_key: str, person_key: str, on_date: date, *, chore=None) -> bool:
     """Person is responsible for chore on date if YAML assigns them and not reassigned away,
-    or if a reassignment to them exists for that date."""
+    or if a reassignment to them exists for that date.
+
+    For `claim_first` chores, any eligible person can claim while no one has yet, and the
+    claimer can untick their own claim."""
     if chore is None:
         chore = _chore(chore_key)
     if chore is None:
         return False
+    if chore.claim_first and person_key in chore.assigned_to:
+        existing = db.session.scalar(
+            select(ChoreCompletion).where(
+                ChoreCompletion.chore_key == chore_key,
+                ChoreCompletion.completed_on == on_date,
+            )
+        )
+        return existing is None or existing.person_key == person_key
     if person_key in chore.assigned_to:
         moved_away = (
             db.session.scalar(
@@ -433,6 +481,7 @@ def toggle(chore_key: str, person_key: str):
     if existing:
         db.session.delete(existing)
         just_done = False
+        audit_log(f"{person_key} unticked {chore_key} on {toggle_date.isoformat()}")
     else:
         db.session.add(
             ChoreCompletion(
@@ -443,6 +492,9 @@ def toggle(chore_key: str, person_key: str):
             )
         )
         just_done = True
+        audit_log(
+            f"{person_key} completed {chore_key} (+{chore.points}) on {toggle_date.isoformat()}"
+        )
     db.session.commit()
 
     item = _build_item(person_key, chore_key, toggle_date, today)
@@ -475,6 +527,8 @@ def toggle(chore_key: str, person_key: str):
     if just_done:
         trigger = json.dumps({"chore-completed": {"personKey": person_key}})
         response.headers["HX-Trigger-After-Swap"] = trigger
+    if chore.claim_first and len(cfg.people) > 1:
+        response.headers["HX-Refresh"] = "true"
     return response
 
 
@@ -491,6 +545,7 @@ def redeem(reward_key: str, person_key: str):
     except InsufficientPointsError:
         db.session.rollback()
         return ("Not enough Chorecoins available", 400)
+    audit_log(f"{person_key} requested {reward_key} ({reward.cost})")
     return redirect(url_for("main.index"))
 
 
@@ -500,6 +555,7 @@ def approve(redemption_id: int):
         abort(403)
     resolve_redemption(db.session, redemption_id, approve=True)
     db.session.commit()
+    audit_log(f"approved redemption {redemption_id}")
     return redirect(url_for("main.index"))
 
 
@@ -509,6 +565,7 @@ def deny(redemption_id: int):
         abort(403)
     resolve_redemption(db.session, redemption_id, approve=False)
     db.session.commit()
+    audit_log(f"denied redemption {redemption_id}")
     return redirect(url_for("main.index"))
 
 
@@ -535,6 +592,7 @@ def skip(chore_key: str, person_key: str):
     if not existing:
         db.session.add(ChoreSkip(chore_key=chore_key, person_key=person_key, skip_date=skip_date))
         db.session.commit()
+        audit_log(f"{person_key} skipped {chore_key} on {skip_date.isoformat()}")
     item = _build_item(person_key, chore_key, skip_date, today)
     cfg = _config()
     return render_template(
@@ -572,6 +630,7 @@ def unskip(chore_key: str, person_key: str):
     if existing:
         db.session.delete(existing)
         db.session.commit()
+        audit_log(f"{person_key} unskipped {chore_key} on {skip_date.isoformat()}")
     item = _build_item(person_key, chore_key, skip_date, today)
     cfg = _config()
     return render_template(
@@ -612,6 +671,7 @@ def adhoc_add():
         AdhocChore(name=name, person_key=person_key, start_date=today, due_date=due, points=points)
     )
     db.session.commit()
+    audit_log(f"{person_key} added ad-hoc '{name}' (+{points}) due {due.isoformat()}")
     return redirect(url_for("main.index"))
 
 
@@ -628,9 +688,11 @@ def adhoc_toggle(adhoc_id: int):
     if task.completed_at:
         task.completed_at = None
         task.completed_date = None
+        audit_log(f"{task.person_key} unticked ad-hoc '{task.name}'")
     else:
         task.completed_at = datetime.now(UTC).replace(tzinfo=None)
         task.completed_date = view_date
+        audit_log(f"{task.person_key} completed ad-hoc '{task.name}' (+{task.points})")
     db.session.commit()
 
     just_done = task.completed_at is not None
@@ -671,8 +733,11 @@ def adhoc_delete(adhoc_id: int):
     if task is None:
         abort(404)
     due = task.due_date
+    person_key = task.person_key
+    name = task.name
     db.session.delete(task)
     db.session.commit()
+    audit_log(f"{person_key} deleted ad-hoc '{name}'")
     today = _today()
     if due == today:
         redirect_url = url_for("main.index")
@@ -687,6 +752,8 @@ def reassign(chore_key: str, original_person: str):
         abort(403)
     chore = _chore(chore_key)
     if chore is None or original_person not in chore.assigned_to:
+        abort(400)
+    if chore.claim_first:
         abort(400)
     to_person = request.form.get("to_person", "")
     date_str = request.form.get("date", "")
@@ -708,6 +775,10 @@ def reassign(chore_key: str, original_person: str):
         if existing:
             db.session.delete(existing)
             db.session.commit()
+            audit_log(
+                f"reassignment of {chore_key} (from {original_person}) cleared on "
+                f"{on_date.isoformat()}"
+            )
     else:
         if existing:
             existing.new_person_key = to_person
@@ -721,6 +792,9 @@ def reassign(chore_key: str, original_person: str):
                 )
             )
         db.session.commit()
+        audit_log(
+            f"reassigned {chore_key} from {original_person} to {to_person} on {on_date.isoformat()}"
+        )
 
     today = _today()
     if on_date == today:
@@ -775,7 +849,72 @@ def adjustment_add():
         )
     )
     db.session.commit()
+    sign = "+" if points >= 0 else ""
+    suffix = f": {reason}" if reason else ""
+    audit_log(f"adjustment {sign}{points} for {person_key}{suffix}")
     return redirect(url_for("main.index"))
+
+
+_HOLIDAY_REASON_MAX = 200
+
+
+@bp.get("/holidays")
+def holidays():
+    if not _pin_unlocked_for(_load_app_cfg()):
+        abort(403)
+    cfg = _config()
+    rows = list(
+        db.session.scalars(
+            select(Holiday).order_by(Holiday.start_date.desc(), Holiday.id.desc())
+        ).all()
+    )
+    return render_template(
+        "holidays.html",
+        holidays=rows,
+        people=cfg.people,
+        people_by_key={p.key: p for p in cfg.people},
+        today=_today(),
+    )
+
+
+@bp.post("/holidays/add")
+def holiday_add():
+    if not _pin_unlocked_for(_load_app_cfg()):
+        abort(403)
+    start_str = request.form.get("start_date", "")
+    end_str = request.form.get("end_date", "")
+    try:
+        start = date.fromisoformat(start_str)
+        end = date.fromisoformat(end_str)
+    except ValueError:
+        abort(400)
+    if end < start:
+        abort(400)
+    person_key = request.form.get("person_key", "").strip() or None
+    if person_key is not None and _person(person_key) is None:
+        abort(400)
+    reason = request.form.get("reason", "").strip()[:_HOLIDAY_REASON_MAX] or None
+    db.session.add(Holiday(start_date=start, end_date=end, person_key=person_key, reason=reason))
+    db.session.commit()
+    who = person_key or "everyone"
+    audit_log(f"holiday added for {who}: {start.isoformat()} to {end.isoformat()}")
+    return redirect(url_for("main.holidays"))
+
+
+@bp.post("/holidays/<int:holiday_id>/delete")
+def holiday_delete(holiday_id: int):
+    if not _pin_unlocked_for(_load_app_cfg()):
+        abort(403)
+    holiday = db.session.get(Holiday, holiday_id)
+    if holiday is None:
+        abort(404)
+    who = holiday.person_key or "everyone"
+    start_iso = holiday.start_date.isoformat()
+    end_iso = holiday.end_date.isoformat()
+    db.session.delete(holiday)
+    db.session.commit()
+    audit_log(f"holiday deleted for {who}: {start_iso} to {end_iso}")
+    return redirect(url_for("main.holidays"))
 
 
 @bp.get("/avatar/<person_key>")
@@ -841,6 +980,7 @@ def stats(person_key: str):
 
     chore_rows = per_chore_stats(db.session, config, person_key, today)
     best_day = best_day_of_week(db.session, person_key)
+    achievements = evaluate_achievements(db.session, config, person_key)
 
     avatar_seed = _avatar_seed(person_key)
 
@@ -859,7 +999,24 @@ def stats(person_key: str):
         total_pts_alltime=total_pts_alltime,
         chore_rows=chore_rows,
         best_day=best_day,
+        achievements=achievements,
         avatar_seed=avatar_seed,
+        avatar_url=_avatar_url,
+    )
+
+
+@bp.get("/audit/<person_key>")
+def audit(person_key: str):
+    person = _person(person_key)
+    if person is None:
+        abort(404)
+    config = _config()
+    events = build_timeline(db.session, config, person_key)
+    return render_template(
+        "audit.html",
+        person=person,
+        events=events,
+        avatar_seed=_avatar_seed(person_key),
         avatar_url=_avatar_url,
     )
 

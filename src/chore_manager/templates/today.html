@@ -9,6 +9,8 @@
     <div class="flex items-center gap-2 shrink-0 flex-wrap justify-end">
       {% if pin_required %}
         {% if pin_unlocked %}
+        <a href="{{ url_for('main.holidays') }}"
+           class="text-xs bg-sky-100 text-sky-800 hover:bg-sky-200 px-2 py-1 rounded font-semibold">Holidays</a>
         <form method="post" action="{{ url_for('main.pin_lock') }}" class="flex items-center gap-1">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <span class="text-xs text-emerald-700 font-semibold">(<span id="pin-countdown">{{ pin_remaining }}</span>s)</span>
@@ -134,6 +136,13 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
           </svg>
         </a>
+        <a href="{{ url_for('main.audit', person_key=person.key) }}"
+           class="text-xs text-slate-500 hover:text-slate-700 flex items-center gap-0.5 opacity-60 hover:opacity-100 transition-opacity"
+           title="View activity">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </a>
       </div>
       <div id="balance-{{ person.key }}" class="text-sm text-slate-600 mt-1">
         <span class="font-semibold text-emerald-700 inline-flex items-center gap-0.5">{{ col.available }} <img src="{{ url_for('static', filename='chore-coin.svg') }}" alt="Chorecoins" class="inline-block w-4 h-4"></span>
@@ -145,6 +154,22 @@
       </div>
     </header>
 
+    {% if col.holiday %}
+    <div class="p-4 bg-sky-50 border-y border-sky-100 text-sky-800">
+      <div class="flex items-center gap-2 font-semibold">
+        <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 10l9-7 9 7M5 10v10a1 1 0 001 1h3m10-11v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-3a1 1 0 011-1h2a1 1 0 011 1v3a1 1 0 001 1m-6 0h6"/>
+        </svg>
+        <span>On holiday</span>
+      </div>
+      {% if col.holiday.reason %}
+      <div class="text-sm mt-1 italic">{{ col.holiday.reason }}</div>
+      {% endif %}
+      <div class="text-xs mt-1 text-sky-600">
+        {{ col.holiday.start_date.strftime("%a %d %b") }} - {{ col.holiday.end_date.strftime("%a %d %b") }}
+      </div>
+    </div>
+    {% else %}
     <ul class="divide-y" id="chores-{{ person.key }}">
       {% for item in col.chores %}
         {% include "partials/chore_cell.html" %}
@@ -152,9 +177,10 @@
         <li class="p-4 text-slate-500 italic">Nothing scheduled</li>
       {% endfor %}
     </ul>
+    {% endif %}
 
     {% set adhoc_tasks = adhoc_by_person[person.key] %}
-    {% if adhoc_tasks or pin_unlocked %}
+    {% if not col.holiday and (adhoc_tasks or pin_unlocked) %}
     <div class="border-t border-dashed">
       {% if adhoc_tasks %}
       <ul class="divide-y divide-dashed">

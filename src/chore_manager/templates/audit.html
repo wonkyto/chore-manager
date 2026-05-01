@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="px-4 py-2 bg-white border-b shadow-sm">
+  <div class="flex items-center justify-between gap-2">
+    <div class="flex items-center gap-2 min-w-0">
+      <a href="{{ url_for('main.index') }}" class="text-slate-500 hover:text-slate-700 shrink-0" aria-label="Back">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+        </svg>
+      </a>
+      {% with person_key=person.key, seed=avatar_seed %}
+        {% include "partials/avatar.html" %}
+      {% endwith %}
+      <h1 class="text-2xl font-bold tracking-tight leading-tight truncate">{{ person.name }} - Activity</h1>
+    </div>
+    <a href="{{ url_for('main.stats', person_key=person.key) }}"
+       class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded font-semibold whitespace-nowrap">Stats</a>
+  </div>
+</header>
+
+<main class="p-4 max-w-2xl mx-auto">
+  {% if events %}
+  <ul class="bg-white rounded-lg shadow divide-y">
+    {% for e in events %}
+    <li class="p-3 flex items-start gap-3">
+      <span class="shrink-0 mt-0.5
+        {% if e.kind == 'completion' or e.kind == 'adhoc' %}text-emerald-600
+        {% elif e.kind == 'adjustment' and e.points and e.points > 0 %}text-emerald-600
+        {% elif e.kind == 'adjustment' and e.points and e.points < 0 %}text-rose-600
+        {% elif e.kind == 'redemption' %}text-amber-600
+        {% elif e.kind == 'reassignment' %}text-indigo-600
+        {% elif e.kind == 'skip' %}text-slate-400
+        {% else %}text-slate-500{% endif %}">
+        {% if e.kind == 'completion' or e.kind == 'adhoc' %}
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+        </svg>
+        {% elif e.kind == 'adjustment' %}
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M7 11l5-5m0 0l5 5m-5-5v12"/>
+        </svg>
+        {% elif e.kind == 'redemption' %}
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/>
+        </svg>
+        {% elif e.kind == 'reassignment' %}
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+        </svg>
+        {% elif e.kind == 'skip' %}
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7"/>
+        </svg>
+        {% else %}
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01"/>
+        </svg>
+        {% endif %}
+      </span>
+      <div class="flex-1 min-w-0">
+        <div class="text-sm">{{ e.summary }}
+          {% if e.points %}
+          <span class="ml-1 inline-flex items-center gap-0.5 font-semibold
+            {% if e.points > 0 %}text-emerald-700{% else %}text-rose-700{% endif %}">
+            {{ '+' if e.points > 0 }}{{ e.points }}
+            <img src="{{ url_for('static', filename='chore-coin.svg') }}" alt="Chorecoins" class="inline-block w-3.5 h-3.5">
+          </span>
+          {% endif %}
+        </div>
+        <div class="text-xs text-slate-500 mt-0.5">{{ e.when.strftime("%a %d %b %Y %H:%M") }}</div>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="text-sm text-slate-500 italic">No activity yet.</p>
+  {% endif %}
+</main>
+{% endblock %}

@@ -1,4 +1,5 @@
 # Global Instructions
+Attribution: Originally taken from [github.com/sammcj/agentic-coding/main/Rules/CLAUDE.md](https://github.com/sammcj/agentic-coding/blob/main/Rules/CLAUDE.md)
 
 <IMPORTANT note="These instructions are especially important and must be followed at all times unless the user explicitly instructs otherwise">
 

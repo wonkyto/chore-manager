@@ -43,6 +43,11 @@
           from {{ people_by_key[item.original_person_key].name }}
         </span>
         {% endif %}
+        {% if item.claim_first and not item.done %}
+        <span class="px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 font-semibold" title="First to tap claims it">
+          claim it
+        </span>
+        {% endif %}
         {% if skipped %}
         <span class="text-slate-400 italic">skipped</span>
         {% elif item.streak >= 2 %}
@@ -53,7 +58,7 @@
       </div>
     </div>
   </div>
-  {% if pin_unlocked and not item.done %}
+  {% if pin_unlocked and not item.done and not item.claim_first %}
   <div class="shrink-0 flex items-center gap-1">
     {% if people and people|length > 1 %}
     <form method="post" action="{{ url_for('main.reassign', chore_key=item.chore_key, original_person=item.original_person_key) }}" class="shrink-0">

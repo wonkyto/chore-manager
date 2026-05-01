@@ -17,6 +17,11 @@ A household chore tracker for families. Each person gets a column showing their 
 - Manual Chorecoin adjustments - parents can add or deduct Chorecoins (preset buttons or a custom amount, with an optional reason) for bonuses, corrections, or penalties outside the chore system
 - Per-day chore reassignment - parents can move a chore from one person's column to another for a single day (the YAML stays the source of truth); the new person earns the Chorecoins when they tick it off
 - Per-person stats page (`/stats/<person_key>`) showing streak, 30-day completion rate, all-time Chorecoins, weekly trend, a 4-week chart, and a per-chore breakdown
+- Holiday mode - parents can mark a date range as a holiday (per person or family-wide); chores are hidden on those days and streaks aren't broken
+- Family-wide chores - mark a chore `claim_first: true` to show it in every eligible column; the first person to tap claims the Chorecoins and the chore disappears from everyone else's column
+- Configurable day rollover - set `day_rollover_hour` in `app.yaml` so late-night taps (e.g. before 4am) still land on the previous day
+- Per-person activity timeline at `/audit/<person_key>` showing completions, ad-hoc tasks, adjustments, redemptions, reassignments and skips. Audit events also stream to stdout, and to `log/audit.log` when `CHORE_AUDIT_LOG` is set
+- Achievements - bronze/silver/gold badges shown on the stats page for milestones (first chore, 100/500/1000 Chorecoins, 3/7/14-day streaks, perfect day, perfect Monday, perfect week, first reward); progress bars show how close locked badges are
 
 ## Setup
 
@@ -49,6 +54,7 @@ timezone: Australia/Sydney
 parent_pin: "1234"           # plain PIN, omit to disable PIN entirely
 # parent_pin_hash: "scrypt:..."  # preferred: hash via werkzeug.security.generate_password_hash
 pin_timeout_seconds: 60      # how long the PIN unlock lasts
+day_rollover_hour: 0         # hour (0-23) when "today" rolls. e.g. 4 means 0-4am still counts as the previous day
 ```
 
 `parent_pin_hash` takes precedence over `parent_pin` if both are present. To generate a hash:
@@ -89,6 +95,19 @@ rewards:
 ```
 
 The `points` field sets how many Chorecoins the chore is worth.
+
+Add `claim_first: true` to make a chore family-wide. It shows in every column listed in `assigned_to`; the first eligible person to tap it earns the Chorecoins and it disappears from everyone else's column.
+
+```yaml
+chores:
+  - key: bins
+    name: Take out the bins
+    points: 8
+    frequency: weekly
+    days: [tue]
+    claim_first: true
+    assigned_to: [alice, bob]
+```
 
 #### Frequencies
 
@@ -157,6 +176,7 @@ Copy `docker-compose.prod.yml`, `config/family.yaml`, and `config/app.yaml` to t
 ```bash
 mkdir -p /data/docker/chore-manager/config
 mkdir -p /data/docker/chore-manager/data
+mkdir -p /data/docker/chore-manager/log
 ```
 
 Start it:

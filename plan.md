@@ -52,3 +52,22 @@ Something like
 - DONE ability to have an image for each person
 - SORT OF DONE admin interface to add/remove/modify tasks, add/remove/modify people, add/remove/modify chore points etc.
 
+## Next up (high value, low effort)
+
+- DONE **Holiday / vacation mode** - a date range that bulk-skips chores for everyone (or selected people). Removes the friction of skipping dozens of chores manually when away. Small model (`holiday(start_date, end_date, person_keys?)`); the column builder consults it like an auto-skip.
+- DONE **Family-wide chores** - chores anyone can claim. First person to tick it earns the Chorecoins and it disappears from everyone else's column. Either a new `assigned_to: [any]` sentinel or a `claim_first: true` flag. Toggle route already records `person_key`, so the data side is small.
+- DONE **Configurable day rollover** - "today" rolls at a configurable hour (e.g. 4am) instead of midnight, so late-night use doesn't lose tomorrow's slate. One field in `app.yaml` (e.g. `day_rollover_hour: 4`); update `_today()` to subtract that offset.
+- DONE **Audit log / activity timeline** - a per-person page (or section on stats) showing completions, adjustments, redemptions, reassignments and skips in chronological order. The data is already stored across those tables; this is mostly query + template work.
+  - in addition this should write to standard out, and have the ability to send to a custom log file on the filesystem (just audit events), called log/audit.log.
+- DONE **Achievements / badges** - milestones like first 100 Chorecoins, 7-day streak, perfect week, all-chores-done-on-a-Monday, etc. Compute on demand from existing data; show as small icons on the stats page (and maybe a brief "Achievement unlocked!" animation on the day view when one trips).
+- Documentation on how this could be uplifted to support an external database like postgres. As we use an ORM, this should be relatively simple to change, perhaps even have this as a configurable option?
+
+## Maybe / parked
+
+- **Saving for a reward / wishlist** - kid picks one reward to save toward; their column shows a progress bar to the cost. Turns Chorecoins into a goal rather than a generic balance. Small schema (`saving_for_key` per person), modest UI. Decide later whether this fits how the family actually uses redemptions.
+- **True time-based chore rotation** - the duplicate-chore-per-person approach covers static day-of-week splits. Only add proper rotation (alternating weeks, monthly handover, n-way rotation) if the duplicate approach starts becoming painful (stats split across keys, edits needed in multiple places, anchor_date juggling).
+
+## Not doing
+
+- Photo proof on completion - high trust value but a lot of moving parts. Skip unless someone asks.
+- Per-person login / auth - the "viewing as" cookie is honour-system. Only worth it if cheating becomes a real problem.

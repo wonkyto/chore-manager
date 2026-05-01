@@ -1,5 +1,6 @@
-app_name: Chore Manager
+app_name: Chore Manager # name of the app, used in the title and header
 timezone: Australia/Sydney
 # parent_pin: "1234"          # plain PIN (hashed automatically not yet supported - see parent_pin_hash)
 # parent_pin_hash: "scrypt:..."  # preferred: hash from werkzeug.security.generate_password_hash
 # pin_timeout_seconds: 60
+# day_rollover_hour: 4         # hour (0-23) when "today" rolls. e.g. 4 means 0-4am still counts as the previous day

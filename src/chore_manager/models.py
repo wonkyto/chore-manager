@@ -49,6 +49,7 @@ class ChoreSkip(Base):
     chore_key: Mapped[str] = mapped_column(String(64), index=True)
     person_key: Mapped[str] = mapped_column(String(64), index=True)
     skip_date: Mapped[date] = mapped_column(Date, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
 class PersonSetting(Base):
@@ -93,4 +94,15 @@ class Adjustment(Base):
     points: Mapped[int] = mapped_column(Integer)
     reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_on: Mapped[date] = mapped_column(Date, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
+class Holiday(Base):
+    __tablename__ = "holiday"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    start_date: Mapped[date] = mapped_column(Date, index=True)
+    end_date: Mapped[date] = mapped_column(Date, index=True)
+    person_key: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
+    reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)

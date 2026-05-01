@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from .config import FamilyConfig
-from .models import ChoreCompletion
+from .models import ChoreCompletion, Holiday
 from .schedule import is_scheduled_on, previous_occurrence
 
 
@@ -18,6 +18,20 @@ def _completions_for(session: Session, chore_key: str, person_key: str) -> set[d
         )
     ).all()
     return set(rows)
+
+
+def _on_holiday(holidays: list[Holiday], d: date) -> bool:
+    return any(h.start_date <= d <= h.end_date for h in holidays)
+
+
+def _holidays_for(session: Session, person_key: str) -> list[Holiday]:
+    return list(
+        session.scalars(
+            select(Holiday).where(
+                or_(Holiday.person_key == person_key, Holiday.person_key.is_(None))
+            )
+        ).all()
+    )
 
 
 def streak(
@@ -32,18 +46,30 @@ def streak(
         return 0
 
     completed = _completions_for(session, chore_key, person_key)
+    holidays = _holidays_for(session, person_key)
+
+    def prev_active(from_date: date) -> date | None:
+        cursor = previous_occurrence(chore, from_date)
+        while cursor is not None and _on_holiday(holidays, cursor):
+            cursor = previous_occurrence(chore, cursor - timedelta(days=1))
+        return cursor
 
     # If today is a scheduled occurrence that hasn't been ticked off yet,
     # don't count it against the streak - start from the previous occurrence.
-    if is_scheduled_on(chore, today) and today not in completed:
-        cursor = previous_occurrence(chore, today - timedelta(days=1))
+    # Holiday days are also skipped (the chore was never expected).
+    if (
+        is_scheduled_on(chore, today)
+        and today not in completed
+        and not _on_holiday(holidays, today)
+    ):
+        cursor = prev_active(today - timedelta(days=1))
     else:
-        cursor = previous_occurrence(chore, today)
+        cursor = prev_active(today)
 
     count = 0
     while cursor is not None and cursor in completed:
         count += 1
-        cursor = previous_occurrence(chore, cursor - timedelta(days=1))
+        cursor = prev_active(cursor - timedelta(days=1))
     return count
 
 
