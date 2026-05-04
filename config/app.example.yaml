@@ -1,6 +1,19 @@
-app_name: Chore Manager # name of the app, used in the title and header
-timezone: Australia/Sydney
-# parent_pin: "1234"          # plain PIN (hashed automatically not yet supported - see parent_pin_hash)
-# parent_pin_hash: "scrypt:..."  # preferred: hash from werkzeug.security.generate_password_hash
+app_name: Chore Manager         # displayed in the browser title and header
+timezone: Australia/Sydney      # any tz database name, e.g. Europe/London, America/New_York
+
+# PIN required to unlock parent actions (reassign, skip, add ad-hoc tasks, approve rewards).
+# Use parent_pin_hash in production - generate with:
+#   python3 -c "from werkzeug.security import generate_password_hash; print(generate_password_hash('1234'))"
+# parent_pin: "1234"
+# parent_pin_hash: "scrypt:32768:8:1$..."
+
+# How long (seconds) the PIN unlock stays active before requiring re-entry. Default: 60.
 # pin_timeout_seconds: 60
-# day_rollover_hour: 4         # hour (0-23) when "today" rolls. e.g. 4 means 0-4am still counts as the previous day
+
+# Hour (0-23) when "today" rolls over. Useful if your family does chores late at night.
+# e.g. 4 means midnight-4am still counts as the previous day. Default: 0 (midnight).
+# day_rollover_hour: 4
+
+# Penalties are never applied before this date. Set this to your go-live date so a fresh
+# deployment doesn't backfill penalties for days that predate the app.
+# penalty_start_date: "2026-01-01"

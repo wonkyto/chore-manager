@@ -2,27 +2,94 @@ people:
   - key: alice
     name: Alice
     role: parent
-    colour: "#4f46e5"
+    colour: "#4f46e5"           # hex colour used for the person's card header
   - key: bob
     name: Bob
     role: child
     colour: "#10b981"
 
 chores:
+  # Daily chore - appears every day
   - key: dishes
     name: Empty dishwasher
-    points: 5
+    points: 10
     frequency: daily
     assigned_to: [bob]
 
+  # claim_first - appears for all assignees; first to tick it claims the points
+  # and it disappears from everyone else's list
+  - key: bins
+    name: Take out bins
+    points: 20
+    frequency: daily
+    assigned_to: [alice, bob]
+    claim_first: true
+
+  # Weekly chore - appears only on the listed days
   - key: piano
     name: Piano practice
     points: 10
     frequency: weekly
-    days: [mon, wed, fri]
+    days: [mon, wed, fri]       # mon tue wed thu fri sat sun
     assigned_to: [bob]
+
+  # Weekly chore with a penalty - points deducted the next morning if not done
+  - key: school_bag
+    name: Put away school bag
+    points: 0
+    penalty: 50
+    frequency: weekly
+    days: [fri]
+    assigned_to: [bob]
+
+  # Fortnightly chore - fires every two weeks starting from anchor_date
+  # anchor_date must be a date that falls on one of the listed days
+  - key: change_sheets
+    name: Change bed sheets
+    points: 30
+    frequency: fortnightly
+    days: [sat]
+    anchor_date: "2026-01-04"
+    assigned_to: [bob]
+
+  # Monthly chore - fires on a specific day of the month
+  - key: clean_bathroom
+    name: Clean bathroom
+    points: 40
+    frequency: monthly
+    day_of_month: 1
+    assigned_to: [bob]
+
+  # Annual chore - fires once a year on a specific month and day
+  - key: spring_clean
+    name: Spring clean
+    points: 100
+    frequency: annual
+    month: 9
+    day_of_month: 1
+    assigned_to: [alice, bob]
+
+  # every_n_days - fires every N days starting from anchor_date
+  - key: water_plants
+    name: Water the plants
+    points: 5
+    frequency: every_n_days
+    every_days: 3
+    anchor_date: "2026-01-01"
+    assigned_to: [bob]
+
+# Task templates appear as quick-select suggestions in the ad-hoc task form,
+# with points pre-filled. Useful for common one-off jobs.
+task_templates:
+  - name: Vacuum living room
+    points: 15
+  - name: Empty recycling bin
+    points: 10
 
 rewards:
   - key: screen_30
     name: 30 minutes screen time
-    cost: 20
+    cost: 50
+  - key: pocket_money
+    name: $2 pocket money
+    cost: 200
