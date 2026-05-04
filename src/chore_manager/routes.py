@@ -35,6 +35,7 @@ from .models import (
     AdhocChore,
     Adjustment,
     ChoreCompletion,
+    ChorePenalty,
     ChoreReassignment,
     ChoreSkip,
     Holiday,
@@ -141,6 +142,52 @@ def _day_label(view_date: date, today: date) -> str | None:
     return None
 
 
+def _apply_pending_penalties(config: FamilyConfig, yesterday: date) -> None:
+    """Apply penalties for incomplete penalty-bearing chores from yesterday."""
+    for chore in config.chores:
+        if not chore.penalty or chore.claim_first:
+            continue
+        if not is_scheduled_on(chore, yesterday):
+            continue
+        for person_key in chore.assigned_to:
+            existing = db.session.scalar(
+                select(ChorePenalty).where(
+                    ChorePenalty.chore_key == chore.key,
+                    ChorePenalty.person_key == person_key,
+                    ChorePenalty.penalty_date == yesterday,
+                )
+            )
+            if existing:
+                continue
+            completed = db.session.scalar(
+                select(ChoreCompletion).where(
+                    ChoreCompletion.chore_key == chore.key,
+                    ChoreCompletion.person_key == person_key,
+                    ChoreCompletion.completed_on == yesterday,
+                )
+            )
+            if completed:
+                continue
+            skipped = db.session.scalar(
+                select(ChoreSkip).where(
+                    ChoreSkip.chore_key == chore.key,
+                    ChoreSkip.person_key == person_key,
+                    ChoreSkip.skip_date == yesterday,
+                )
+            )
+            if skipped:
+                continue
+            db.session.add(
+                ChorePenalty(
+                    chore_key=chore.key,
+                    person_key=person_key,
+                    penalty_date=yesterday,
+                    points_deducted=chore.penalty,
+                )
+            )
+            audit_log(f"{person_key} penalised {chore.key} on {yesterday.isoformat()} (-{chore.penalty})")
+
+
 def _build_item(person_key: str, chore_key: str, view_date: date, today: date) -> dict:
     chore = _chore(chore_key)
     done = (
@@ -172,10 +219,22 @@ def _build_item(person_key: str, chore_key: str, view_date: date, today: date) -
     )
     is_reassigned = reassignment is not None
     original_person_key = reassignment.original_person_key if is_reassigned else person_key
+    penalised = (
+        db.session.scalar(
+            select(ChorePenalty).where(
+                ChorePenalty.chore_key == chore_key,
+                ChorePenalty.person_key == person_key,
+                ChorePenalty.penalty_date == view_date,
+            )
+        )
+        is not None
+    )
     return {
         "chore_key": chore_key,
         "name": chore.name,
         "points": chore.points,
+        "penalty": chore.penalty,
+        "penalised": penalised,
         "done": done,
         "skipped": skipped,
         "is_reassigned": is_reassigned,
@@ -239,6 +298,10 @@ def index():
     prev_date = view_date - timedelta(days=1)
     next_date = view_date + timedelta(days=1)
 
+    yesterday = today - timedelta(days=1)
+    _apply_pending_penalties(config, yesterday)
+    db.session.commit()
+
     completion_rows = list(
         db.session.scalars(
             select(ChoreCompletion).where(ChoreCompletion.completed_on == view_date)
@@ -250,6 +313,12 @@ def index():
         (row.chore_key, row.person_key)
         for row in db.session.scalars(
             select(ChoreSkip).where(ChoreSkip.skip_date == view_date)
+        ).all()
+    }
+    penalised_keys = {
+        (row.chore_key, row.person_key)
+        for row in db.session.scalars(
+            select(ChorePenalty).where(ChorePenalty.penalty_date == view_date)
         ).all()
     }
 
@@ -284,6 +353,8 @@ def index():
                         "chore_key": chore.key,
                         "name": chore.name,
                         "points": chore.points,
+                        "penalty": chore.penalty,
+                        "penalised": (chore.key, person.key) in penalised_keys,
                         "done": (chore.key, person.key) in completed_keys,
                         "skipped": (chore.key, person.key) in skipped_keys,
                         "is_reassigned": False,
@@ -307,6 +378,8 @@ def index():
                         "chore_key": chore.key,
                         "name": chore.name,
                         "points": chore.points,
+                        "penalty": chore.penalty,
+                        "penalised": (chore.key, person.key) in penalised_keys,
                         "done": (chore.key, person.key) in completed_keys,
                         "skipped": (chore.key, person.key) in skipped_keys,
                         "is_reassigned": True,
@@ -364,11 +437,11 @@ def index():
         if row.avatar_seed
     }
 
-    config_chores = {c.name: c.points for c in config.chores}
+    template_map = {t.name: t.points for t in config.task_templates}
     adhoc_names = db.session.scalars(
         select(AdhocChore.name).distinct().order_by(AdhocChore.name)
     ).all()
-    suggestions_map = dict(config_chores)
+    suggestions_map = dict(template_map)
     for name in adhoc_names:
         if name not in suggestions_map:
             suggestions_map[name] = None

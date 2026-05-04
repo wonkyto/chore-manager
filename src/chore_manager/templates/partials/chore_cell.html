@@ -37,7 +37,13 @@
         {{ item.name }}
       </div>
       <div class="text-xs text-slate-600 mt-1 flex items-center gap-2 flex-wrap">
-        <span class="inline-flex items-center gap-0.5">{{ item.points }} <img src="{{ url_for('static', filename='chore-coin.svg') }}" alt="Chorecoins" class="inline-block w-3.5 h-3.5"></span>
+        {% if item.points > 0 %}<span class="inline-flex items-center gap-0.5">{{ item.points }} <img src="{{ url_for('static', filename='chore-coin.svg') }}" alt="Chorecoins" class="inline-block w-3.5 h-3.5"></span>{% endif %}
+        {% if item.penalty > 0 and not item.done %}
+        <span class="inline-flex items-center gap-0.5 {% if item.penalised %}text-rose-700 font-semibold{% else %}text-slate-400{% endif %}">
+          {% if item.penalised %}-{{ item.penalty }} penalty{% else %}-{{ item.penalty }} if missed{% endif %}
+          <img src="{{ url_for('static', filename='chore-coin.svg') }}" alt="Chorecoins" class="inline-block w-3.5 h-3.5 opacity-60">
+        </span>
+        {% endif %}
         {% if item.is_reassigned and people_by_key and item.original_person_key in people_by_key %}
         <span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 font-semibold" title="Reassigned for this day only">
           from {{ people_by_key[item.original_person_key].name }}

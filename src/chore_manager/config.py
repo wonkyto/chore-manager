@@ -38,6 +38,7 @@ class _ChoreBase(BaseModel):
     key: str
     name: str
     points: int = Field(ge=0)
+    penalty: int = Field(default=0, ge=0)
     assigned_to: list[str]
     claim_first: bool = False
 
@@ -100,10 +101,16 @@ class Reward(BaseModel):
     cost: int = Field(ge=0)
 
 
+class TaskTemplate(BaseModel):
+    name: str
+    points: int = Field(ge=0)
+
+
 class FamilyConfig(BaseModel):
     people: list[Person]
     chores: list[Chore] = Field(default_factory=list)
     rewards: list[Reward] = Field(default_factory=list)
+    task_templates: list[TaskTemplate] = Field(default_factory=list)
 
     @field_validator("people")
     @classmethod

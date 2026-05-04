@@ -41,6 +41,18 @@ class AdhocChore(Base):
     completed_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
 
+class ChorePenalty(Base):
+    __tablename__ = "chore_penalty"
+    __table_args__ = (UniqueConstraint("chore_key", "person_key", "penalty_date", name="uq_penalty"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    chore_key: Mapped[str] = mapped_column(String(64), index=True)
+    person_key: Mapped[str] = mapped_column(String(64), index=True)
+    penalty_date: Mapped[date] = mapped_column(Date, index=True)
+    points_deducted: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+
 class ChoreSkip(Base):
     __tablename__ = "chore_skip"
     __table_args__ = (UniqueConstraint("chore_key", "person_key", "skip_date", name="uq_skip"),)
