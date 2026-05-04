@@ -144,6 +144,9 @@ def _day_label(view_date: date, today: date) -> str | None:
 
 def _apply_pending_penalties(config: FamilyConfig, yesterday: date) -> None:
     """Apply penalties for incomplete penalty-bearing chores from yesterday."""
+    app_cfg = _load_app_cfg()
+    if app_cfg.penalty_start_date and yesterday < app_cfg.penalty_start_date:
+        return
     for chore in config.chores:
         if not chore.penalty or chore.claim_first:
             continue
