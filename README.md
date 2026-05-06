@@ -1,5 +1,7 @@
 # Chore Manager
 
+![Chore Manager](docs/homescreen-icon.png)
+
 A household chore tracker for families. Each person gets a column showing their tasks for the day. Tap a chore to mark it done; it turns green and earns Chorecoins. Kids redeem Chorecoins for rewards (screen time, pocket money, etc.) which queue for a parent to approve or deny via PIN.
 
 ## Features
@@ -55,6 +57,7 @@ parent_pin: "1234"           # plain PIN, omit to disable PIN entirely
 # parent_pin_hash: "scrypt:..."  # preferred: hash via werkzeug.security.generate_password_hash
 pin_timeout_seconds: 60      # how long the PIN unlock lasts
 day_rollover_hour: 0         # hour (0-23) when "today" rolls. e.g. 4 means 0-4am still counts as the previous day
+penalty_start_date: "2026-01-01"  # penalties never applied before this date; set to your go-live date
 ```
 
 `parent_pin_hash` takes precedence over `parent_pin` if both are present. To generate a hash:
@@ -94,7 +97,17 @@ rewards:
     cost: 20
 ```
 
-The `points` field sets how many Chorecoins the chore is worth.
+The `points` field sets how many Chorecoins the chore is worth. Add `penalty` to deduct Chorecoins the following morning if the chore wasn't completed:
+
+```yaml
+  - key: school_bag
+    name: Put away school bag
+    points: 0
+    penalty: 50
+    frequency: weekly
+    days: [fri]
+    assigned_to: [bob]
+```
 
 Add `claim_first: true` to make a chore family-wide. It shows in every column listed in `assigned_to`; the first eligible person to tap it earns the Chorecoins and it disappears from everyone else's column.
 
@@ -165,6 +178,18 @@ chores:
     assigned_to: [bob]
 ```
 
+#### Task templates
+
+`task_templates` in `family.yaml` provide quick-select suggestions in the ad-hoc task form, with points pre-filled:
+
+```yaml
+task_templates:
+  - name: Vacuum living room
+    points: 15
+  - name: Empty recycling bin
+    points: 10
+```
+
 ### Data storage
 
 Chore completions and redemptions are stored in a SQLite database. The location is controlled by the `CHORE_DATA_DIR` environment variable (set in the compose files). Data persists across container restarts via a volume mount.
@@ -205,75 +230,13 @@ Static assets (Tailwind CSS, htmx, canvas-confetti) are vendored under `src/chor
 
 ## Migrating to PostgreSQL
 
-The app uses SQLAlchemy throughout, so switching from SQLite to PostgreSQL is mosly a matter of pointing it at a different database URL. No query rewrites are neeed.
-
-### What already works
-
-The database URL is read from the `CHORE_DB_URL` environment variable. SQLite is sed when it isn't set. Set it to a Postgres connection string and the ORM will us that instead:
-
-```
-CHORE_DB_URL=postgresql+psycopg2://user:password@host:5432/chore_manager          
-```
-
-The SQLite-specific tuning (`WAL mode`, `BEGIN IMMEDIATE`, `busy_timeout`) is skiped automatically when the dialect isn't SQLite, so no code changes are needed thre.
-
-### What needs attention
-
-**Driver dependency** - Add `psycopg2-binary` (or `psycopg[binary]` for the newerv3 driver) to `pyproject.toml`:
-
-```toml
-dependencies = [                                                                  
-    ...                                                                           
-    "psycopg2-binary>=2.9",                                                       
-]                                                                                 
-```
-
-Rebuild the Docker image after changing this.
-
-**Schema migrations** - The built-in `_migrate()` function uses SQLite `PRAGMA tale_info()` to detect missing columns and add them. That won't run on Postgres. Fo SQLite this is fine because schema changes are rare and the migration list is shrt. For Postgres you'd want a proper migration tool. [Alembic](https://alembic.sqalchemy.org/) is the standard choice with SQLAlchemy - it can autogenerate migraton scripts from model changes and apply them in order. To get started:
-
-```bash
-uv add alembic                                                                    
-uv run alembic init alembic                                                       
-# edit alembic/env.py to point at your models and CHORE_DB_URL                    
-uv run alembic revision --autogenerate -m "initial"                               
-uv run alembic upgrade head                                                       
-```
-
-**Concurrency** - SQLite serialises writes with `BEGIN IMMEDIATE` to prevent doube-spend on redemptions. PostgreSQL handles concurrent writes natively via its ownMVCC locking, so that protection is already covered without any extra configuratin.
-
-**`db.create_all()` on first run** - For a fresh Postgres database, `db.create_al()` still runs on startup and will create all tables correctly. After that, schem changes should go through Alembic rather than `create_all`.
-
-### docker-compose.yml changes
-
-Add the URL and a Postgres service, or point at an external Postgres instance:
-
-```yaml
-services:                                                                         
-  chore-manager:                                                                  
-    environment:                                                                  
-      CHORE_DATA_DIR: /app/data                                                   
-      CHORE_DB_URL: postgresql+psycopg2://chore:secret@db:5432/chore_manager      
-      CHORE_AUDIT_LOG: /app/log/audit.log                                         
-                                                                                  
-  db:                                                                             
-    image: postgres:16                                                            
-    restart: unless-stopped                                                       
-    environment:                                                                  
-      POSTGRES_DB: chore_manager                                                  
-      POSTGRES_USER: chore                                                        
-      POSTGRES_PASSWORD: secret                                                   
-    volumes:                                                                      
-      - ./pgdata:/var/lib/postgresql/data                                         
-```
-
-Remove the `./data:/app/data` volume mount once the SQLite file is no longer needd. The `instance/` mount for the session secret key can stay.
+The app uses SQLAlchemy throughout, so switching from SQLite to PostgreSQL is a matter of pointing it at a different database URL. No query rewrites needed.
 
 ### What already works
 
 The database URL is read from the `CHORE_DB_URL` environment variable. SQLite is used when it isn't set. Set it to a Postgres connection string and the ORM will use that instead:
 
-```
+```bash
 CHORE_DB_URL=postgresql+psycopg2://user:password@host:5432/chore_manager
 ```
 

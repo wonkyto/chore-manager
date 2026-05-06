@@ -64,9 +64,9 @@
       </div>
     </div>
   </div>
-  {% if pin_unlocked and not item.done and not item.claim_first %}
+  {% if pin_unlocked and not item.done %}
   <div class="shrink-0 flex items-center gap-1">
-    {% if people and people|length > 1 %}
+    {% if people and people|length > 1 and not item.claim_first %}
     <form method="post" action="{{ url_for('main.reassign', chore_key=item.chore_key, original_person=item.original_person_key) }}" class="shrink-0">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="date" value="{{ view_date.isoformat() }}">
