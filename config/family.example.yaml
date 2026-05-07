@@ -7,6 +7,7 @@ people:
     name: Bob
     role: child
     colour: "#10b981"
+    birthday: "05-15"           # MM-DD - chores auto-skipped and points awarded on their birthday
 
 chores:
   # Daily chore - appears every day
