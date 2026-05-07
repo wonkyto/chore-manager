@@ -41,6 +41,7 @@ class _ChoreBase(BaseModel):
     penalty: int = Field(default=0, ge=0)
     assigned_to: list[str]
     claim_first: bool = False
+    start_date: date | None = None
 
 
 class DailyChore(_ChoreBase):

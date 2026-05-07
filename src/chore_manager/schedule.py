@@ -53,6 +53,8 @@ class ScheduledChore:
 
 
 def is_scheduled_on(chore: Chore, on: date) -> bool:
+    if chore.start_date and on < chore.start_date:
+        return False
     match chore:
         case DailyChore():
             return True

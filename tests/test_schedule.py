@@ -272,6 +272,37 @@ def test_previous_occurrence_annual_walks_to_prior_year():
     assert previous_occurrence(chore, date(2026, 12, 31)) == date(2026, 4, 1)
 
 
+def test_start_date_prevents_chore_appearing_before_it():
+    chore = _single_chore(
+        {
+            "key": "hw",
+            "name": "Homework",
+            "points": 0,
+            "frequency": "weekly",
+            "days": ["mon", "tue", "wed", "thu"],
+            "start_date": "2026-05-07",
+        }
+    )
+    assert not is_scheduled_on(chore, date(2026, 5, 6))   # Wednesday before start
+    assert not is_scheduled_on(chore, date(2026, 5, 4))   # Monday before start
+    assert is_scheduled_on(chore, date(2026, 5, 7))        # Thursday on start date
+    assert is_scheduled_on(chore, date(2026, 5, 11))       # Monday after start
+
+
+def test_start_date_does_not_block_chore_on_start_day():
+    chore = _single_chore(
+        {
+            "key": "hw",
+            "name": "Homework",
+            "points": 0,
+            "frequency": "daily",
+            "start_date": "2026-05-07",
+        }
+    )
+    assert is_scheduled_on(chore, date(2026, 5, 7))
+    assert not is_scheduled_on(chore, date(2026, 5, 6))
+
+
 def test_previous_occurrence_every_n_days_aligns_to_anchor():
     chore = _single_chore(
         {

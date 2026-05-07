@@ -29,7 +29,8 @@ def _sum_or_zero(session: Session, stmt) -> int:
     return int(val or 0)
 
 
-def points_earned(session: Session, person_key: str) -> int:
+def gross_points_earned(session: Session, person_key: str) -> int:
+    """Total chorecoins earned before penalties. Use for achievements and 'earned' displays."""
     from_scheduled = _sum_or_zero(
         session,
         select(func.coalesce(func.sum(ChoreCompletion.points_awarded), 0)).where(
@@ -49,13 +50,18 @@ def points_earned(session: Session, person_key: str) -> int:
             Adjustment.person_key == person_key
         ),
     )
+    return from_scheduled + from_adhoc + from_adjustments
+
+
+def points_earned(session: Session, person_key: str) -> int:
+    """Net chorecoins after penalties. Use for balance and available-to-spend calculations."""
     from_penalties = _sum_or_zero(
         session,
         select(func.coalesce(func.sum(ChorePenalty.points_deducted), 0)).where(
             ChorePenalty.person_key == person_key
         ),
     )
-    return from_scheduled + from_adhoc + from_adjustments - from_penalties
+    return gross_points_earned(session, person_key) - from_penalties
 
 
 def points_in_status(session: Session, person_key: str, status: str) -> int:

@@ -22,6 +22,7 @@ from .achievements import evaluate as evaluate_achievements
 from .approvals import (
     InsufficientPointsError,
     available_points,
+    gross_points_earned,
     points_earned,
     points_in_status,
     request_redemption,
@@ -1066,7 +1067,7 @@ def stats(person_key: str):
 
     this_week, last_week = weekly_points(db.session, person_key, today)
     streak = overall_streak(db.session, person_key, today)
-    total_pts_alltime = points_earned(db.session, person_key)
+    total_pts_alltime = gross_points_earned(db.session, person_key)
 
     chore_rows = per_chore_stats(db.session, config, person_key, today)
     best_day = best_day_of_week(db.session, person_key)

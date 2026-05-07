@@ -33,13 +33,16 @@ chores:
     days: [mon, wed, fri]       # mon tue wed thu fri sat sun
     assigned_to: [bob]
 
-  # Weekly chore with a penalty - points deducted the next morning if not done
+  # Weekly chore with a penalty - points deducted the next morning if not done.
+  # Use start_date when adding a new chore mid-deployment so it doesn't backfill
+  # penalties for days before the chore existed.
   - key: school_bag
     name: Put away school bag
     points: 0
     penalty: 50
     frequency: weekly
     days: [fri]
+    start_date: "2026-01-05"
     assigned_to: [bob]
 
   # Fortnightly chore - fires every two weeks starting from anchor_date

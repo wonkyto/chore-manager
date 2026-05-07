@@ -109,6 +109,19 @@ The `points` field sets how many Chorecoins the chore is worth. Add `penalty` to
     assigned_to: [bob]
 ```
 
+Add `start_date` to any chore to prevent it appearing or incurring penalties before that date. Useful when adding a new chore mid-deployment:
+
+```yaml
+  - key: homework
+    name: Do homework
+    points: 0
+    penalty: 50
+    frequency: weekly
+    days: [mon, tue, wed, thu]
+    start_date: "2026-05-07"
+    assigned_to: [bob]
+```
+
 Add `claim_first: true` to make a chore family-wide. It shows in every column listed in `assigned_to`; the first eligible person to tap it earns the Chorecoins and it disappears from everyone else's column.
 
 ```yaml

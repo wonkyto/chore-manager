@@ -8,7 +8,7 @@ from typing import Literal
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .approvals import points_earned
+from .approvals import gross_points_earned
 from .config import FamilyConfig
 from .models import (
     AdhocChore,
@@ -205,7 +205,7 @@ def _has_approved_redemption(session: Session, person_key: str) -> bool:
 
 def evaluate(session: Session, config: FamilyConfig, person_key: str) -> list[EvaluatedAchievement]:
     completions = completion_count(session, person_key)
-    coins = points_earned(session, person_key)
+    coins = gross_points_earned(session, person_key)
     streak = longest_streak(session, person_key)
     perfect = perfect_days(session, config, person_key)
     perfect_streak = longest_perfect_streak(perfect)

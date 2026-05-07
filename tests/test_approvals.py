@@ -8,11 +8,12 @@ from chore_manager.approvals import (
     InsufficientPointsError,
     InvalidStateError,
     available_points,
+    gross_points_earned,
     request_redemption,
     resolve_redemption,
 )
 from chore_manager.db import db
-from chore_manager.models import ChoreCompletion
+from chore_manager.models import ChoreCompletion, ChorePenalty
 
 
 def _earn(person_key: str, points: int, on: date | None = None) -> None:
@@ -75,6 +76,22 @@ def test_deny_releases_held_points(app):
         resolve_redemption(db.session, r.id, approve=False)
         db.session.commit()
         assert available_points(db.session, "bob") == 30
+
+
+def test_penalty_reduces_available_but_not_gross(app):
+    with app.app_context():
+        _earn("bob", 100)
+        db.session.add(
+            ChorePenalty(
+                chore_key="hw",
+                person_key="bob",
+                penalty_date=date(2026, 5, 6),
+                points_deducted=50,
+            )
+        )
+        db.session.commit()
+        assert gross_points_earned(db.session, "bob") == 100
+        assert available_points(db.session, "bob") == 50
 
 
 def test_resolving_twice_raises(app):
