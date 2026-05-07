@@ -12,6 +12,7 @@ from .approvals import gross_points_earned
 from .config import FamilyConfig
 from .models import (
     AdhocChore,
+    Adjustment,
     ChoreCompletion,
     ChoreReassignment,
     ChoreSkip,
@@ -79,6 +80,17 @@ def completion_count(session: Session, person_key: str) -> int:
     return int(sched or 0) + int(adhoc or 0)
 
 
+def _birthday_dates(session: Session, person_key: str) -> set[date]:
+    return set(
+        session.scalars(
+            select(Adjustment.created_on).where(
+                Adjustment.person_key == person_key,
+                Adjustment.reason == "Birthday",
+            )
+        ).all()
+    )
+
+
 def _completion_dates(session: Session, person_key: str) -> set[date]:
     sched = set(
         session.scalars(
@@ -95,7 +107,7 @@ def _completion_dates(session: Session, person_key: str) -> set[date]:
         ).all()
         if d is not None
     }
-    return sched | adhoc
+    return sched | adhoc | _birthday_dates(session, person_key)
 
 
 def longest_streak(session: Session, person_key: str) -> int:

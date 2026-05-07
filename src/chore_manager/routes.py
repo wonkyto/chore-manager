@@ -29,7 +29,7 @@ from .approvals import (
     resolve_redemption,
 )
 from .audit import audit_log, build_timeline
-from .config import AppConfig, FamilyConfig, load_app_config, load_config
+from .config import AppConfig, FamilyConfig, is_birthday, load_app_config, load_config
 from .db import db
 from .history import streak
 from .models import (
@@ -192,6 +192,66 @@ def _apply_pending_penalties(config: FamilyConfig, yesterday: date) -> None:
             audit_log(f"{person_key} penalised {chore.key} on {yesterday.isoformat()} (-{chore.penalty})")
 
 
+_BIRTHDAY_REASON = "Birthday"
+
+
+def _apply_birthday_exemptions(config: FamilyConfig, yesterday: date) -> None:
+    """Auto-skip chores and award points for anyone whose birthday was yesterday."""
+    for person in config.people:
+        if not is_birthday(person, yesterday):
+            continue
+        already = db.session.scalar(
+            select(Adjustment).where(
+                Adjustment.person_key == person.key,
+                Adjustment.created_on == yesterday,
+                Adjustment.reason == _BIRTHDAY_REASON,
+            )
+        )
+        if already:
+            continue
+        points_to_award = 0
+        for chore in config.chores:
+            if person.key not in chore.assigned_to or chore.claim_first:
+                continue
+            if not is_scheduled_on(chore, yesterday):
+                continue
+            already_done = db.session.scalar(
+                select(ChoreCompletion).where(
+                    ChoreCompletion.chore_key == chore.key,
+                    ChoreCompletion.person_key == person.key,
+                    ChoreCompletion.completed_on == yesterday,
+                )
+            )
+            if not already_done:
+                already_skipped = db.session.scalar(
+                    select(ChoreSkip).where(
+                        ChoreSkip.chore_key == chore.key,
+                        ChoreSkip.person_key == person.key,
+                        ChoreSkip.skip_date == yesterday,
+                    )
+                )
+                if not already_skipped:
+                    db.session.add(
+                        ChoreSkip(
+                            chore_key=chore.key,
+                            person_key=person.key,
+                            skip_date=yesterday,
+                        )
+                    )
+                points_to_award += chore.points
+        db.session.add(
+            Adjustment(
+                person_key=person.key,
+                points=points_to_award,
+                reason=_BIRTHDAY_REASON,
+                created_on=yesterday,
+            )
+        )
+        audit_log(
+            f"{person.key} birthday exemption on {yesterday.isoformat()} (+{points_to_award})"
+        )
+
+
 def _build_item(person_key: str, chore_key: str, view_date: date, today: date) -> dict:
     chore = _chore(chore_key)
     done = (
@@ -304,7 +364,10 @@ def index():
 
     yesterday = today - timedelta(days=1)
     _apply_pending_penalties(config, yesterday)
+    _apply_birthday_exemptions(config, yesterday)
     db.session.commit()
+
+    birthday_people = {p.key for p in config.people if is_birthday(p, view_date)}
 
     completion_rows = list(
         db.session.scalars(
@@ -398,6 +461,7 @@ def index():
                 "person": person,
                 "chores": chore_items,
                 "holiday": holiday,
+                "birthday": person.key in birthday_people,
                 "available": available_points(db.session, person.key),
                 "earned": points_earned(db.session, person.key),
                 "pending": points_in_status(db.session, person.key, "pending"),

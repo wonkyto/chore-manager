@@ -32,6 +32,26 @@ class Person(BaseModel):
     role: Role
     colour: str = "#6b7280"
     avatar: str | None = None
+    birthday: str | None = None  # MM-DD, e.g. "05-15"
+
+    @field_validator("birthday")
+    @classmethod
+    def valid_birthday_format(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        try:
+            month, day = v.split("-")
+            date(2000, int(month), int(day))
+        except (ValueError, AttributeError):
+            raise ValueError("birthday must be MM-DD format, e.g. '05-15'")
+        return v
+
+
+def is_birthday(person: Person, on: date) -> bool:
+    if not person.birthday:
+        return False
+    month, day = person.birthday.split("-")
+    return on.month == int(month) and on.day == int(day)
 
 
 class _ChoreBase(BaseModel):

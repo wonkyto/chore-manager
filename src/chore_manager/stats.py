@@ -212,7 +212,15 @@ def overall_streak(session: Session, person_key: str, today: date) -> int:
         ).all()
         if d is not None
     }
-    all_dates = sched_dates | adhoc_dates
+    birthday_dates = set(
+        session.scalars(
+            select(Adjustment.created_on).where(
+                Adjustment.person_key == person_key,
+                Adjustment.reason == "Birthday",
+            )
+        ).all()
+    )
+    all_dates = sched_dates | adhoc_dates | birthday_dates
 
     cursor = today
     if cursor not in all_dates:
