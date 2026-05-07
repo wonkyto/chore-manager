@@ -6,7 +6,7 @@ import pytest
 
 from chore_manager.app import create_app
 from chore_manager.db import db
-from chore_manager.models import ChoreCompletion
+from chore_manager.models import ChoreCompletion, ChoreSkip
 
 _FAMILY = """
 people:
@@ -121,6 +121,31 @@ def test_reassign_blocked_for_claim_first(claim_client):
         "/reassign/bins/alice", data={"to_person": "bob", "date": "2026-05-01"}
     )
     assert resp.status_code == 400
+
+
+def test_skip_claim_first_skips_all_assigned(claim_client, claim_app):
+    claim_client.post("/skip/bins/alice", data={"date": "2026-05-07"})
+    with claim_app.app_context():
+        skips = db.session.query(ChoreSkip).all()
+        skipped_people = {s.person_key for s in skips}
+        assert skipped_people == {"alice", "bob"}
+
+
+def test_unskip_claim_first_unskips_all_assigned(claim_client, claim_app):
+    claim_client.post("/skip/bins/alice", data={"date": "2026-05-07"})
+    claim_client.post("/unskip/bins/alice", data={"date": "2026-05-07"})
+    with claim_app.app_context():
+        assert db.session.query(ChoreSkip).count() == 0
+
+
+def test_skip_claim_first_returns_hx_refresh(claim_client):
+    resp = claim_client.post("/skip/bins/alice", data={"date": "2026-05-07"})
+    assert resp.headers.get("HX-Refresh") == "true"
+
+
+def test_skip_normal_chore_no_hx_refresh(claim_client):
+    resp = claim_client.post("/skip/dishes/bob", data={"date": "2026-05-07"})
+    assert resp.headers.get("HX-Refresh") is None
 
 
 def test_non_eligible_person_cannot_claim(tmp_path: Path):

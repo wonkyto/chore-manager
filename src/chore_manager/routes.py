@@ -658,29 +658,36 @@ def skip(chore_key: str, person_key: str):
     skip_date = date.fromisoformat(date_str) if date_str else today
     if not _has_responsibility(chore_key, person_key, skip_date, chore=chore):
         abort(404)
-    existing = db.session.scalar(
-        select(ChoreSkip).where(
-            ChoreSkip.chore_key == chore_key,
-            ChoreSkip.person_key == person_key,
-            ChoreSkip.skip_date == skip_date,
+    people_to_skip = chore.assigned_to if chore.claim_first else [person_key]
+    for pk in people_to_skip:
+        existing = db.session.scalar(
+            select(ChoreSkip).where(
+                ChoreSkip.chore_key == chore_key,
+                ChoreSkip.person_key == pk,
+                ChoreSkip.skip_date == skip_date,
+            )
         )
-    )
-    if not existing:
-        db.session.add(ChoreSkip(chore_key=chore_key, person_key=person_key, skip_date=skip_date))
-        db.session.commit()
-        audit_log(f"{person_key} skipped {chore_key} on {skip_date.isoformat()}")
+        if not existing:
+            db.session.add(ChoreSkip(chore_key=chore_key, person_key=pk, skip_date=skip_date))
+    db.session.commit()
+    audit_log(f"{person_key} skipped {chore_key} on {skip_date.isoformat()}")
     item = _build_item(person_key, chore_key, skip_date, today)
     cfg = _config()
-    return render_template(
-        "partials/chore_cell.html",
-        item=item,
-        person=person,
-        is_today=skip_date == today,
-        pin_unlocked=_pin_unlocked_for(_load_app_cfg()),
-        view_date=skip_date,
-        people=cfg.people,
-        people_by_key={p.key: p for p in cfg.people},
+    response = make_response(
+        render_template(
+            "partials/chore_cell.html",
+            item=item,
+            person=person,
+            is_today=skip_date == today,
+            pin_unlocked=_pin_unlocked_for(_load_app_cfg()),
+            view_date=skip_date,
+            people=cfg.people,
+            people_by_key={p.key: p for p in cfg.people},
+        )
     )
+    if chore.claim_first:
+        response.headers["HX-Refresh"] = "true"
+    return response
 
 
 @bp.post("/unskip/<chore_key>/<person_key>")
@@ -696,29 +703,36 @@ def unskip(chore_key: str, person_key: str):
     skip_date = date.fromisoformat(date_str) if date_str else today
     if not _has_responsibility(chore_key, person_key, skip_date, chore=chore):
         abort(404)
-    existing = db.session.scalar(
-        select(ChoreSkip).where(
-            ChoreSkip.chore_key == chore_key,
-            ChoreSkip.person_key == person_key,
-            ChoreSkip.skip_date == skip_date,
+    people_to_unskip = chore.assigned_to if chore.claim_first else [person_key]
+    for pk in people_to_unskip:
+        existing = db.session.scalar(
+            select(ChoreSkip).where(
+                ChoreSkip.chore_key == chore_key,
+                ChoreSkip.person_key == pk,
+                ChoreSkip.skip_date == skip_date,
+            )
         )
-    )
-    if existing:
-        db.session.delete(existing)
-        db.session.commit()
-        audit_log(f"{person_key} unskipped {chore_key} on {skip_date.isoformat()}")
+        if existing:
+            db.session.delete(existing)
+    db.session.commit()
+    audit_log(f"{person_key} unskipped {chore_key} on {skip_date.isoformat()}")
     item = _build_item(person_key, chore_key, skip_date, today)
     cfg = _config()
-    return render_template(
-        "partials/chore_cell.html",
-        item=item,
-        person=person,
-        is_today=skip_date == today,
-        pin_unlocked=_pin_unlocked_for(_load_app_cfg()),
-        view_date=skip_date,
-        people=cfg.people,
-        people_by_key={p.key: p for p in cfg.people},
+    response = make_response(
+        render_template(
+            "partials/chore_cell.html",
+            item=item,
+            person=person,
+            is_today=skip_date == today,
+            pin_unlocked=_pin_unlocked_for(_load_app_cfg()),
+            view_date=skip_date,
+            people=cfg.people,
+            people_by_key={p.key: p for p in cfg.people},
+        )
     )
+    if chore.claim_first:
+        response.headers["HX-Refresh"] = "true"
+    return response
 
 
 _ADHOC_NAME_MAX = 200
