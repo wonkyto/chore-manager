@@ -1,4 +1,4 @@
-VERSION = 0.0.1
+VERSION = 0.0.2
 IMAGE_NAME ?= wonkyto/chore-manager:$(VERSION)
 TAILWIND_VERSION = v4.2.4
 TAILWIND_BIN = .cache/tailwindcss

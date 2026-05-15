@@ -734,6 +734,15 @@ def skip(chore_key: str, person_key: str):
         )
         if not existing:
             db.session.add(ChoreSkip(chore_key=chore_key, person_key=pk, skip_date=skip_date))
+        penalty = db.session.scalar(
+            select(ChorePenalty).where(
+                ChorePenalty.chore_key == chore_key,
+                ChorePenalty.person_key == pk,
+                ChorePenalty.penalty_date == skip_date,
+            )
+        )
+        if penalty:
+            db.session.delete(penalty)
     db.session.commit()
     audit_log(f"{person_key} skipped {chore_key} on {skip_date.isoformat()}")
     item = _build_item(person_key, chore_key, skip_date, today)
