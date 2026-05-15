@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import secrets
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from flask import Flask
@@ -51,6 +52,15 @@ def create_app(
     default_db = f"sqlite:///{data_dir / 'chore.db'}"
     app.config["SQLALCHEMY_DATABASE_URI"] = db_url or os.environ.get("CHORE_DB_URL", default_db)
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+    try:
+        app_version = version("chore-manager")
+    except PackageNotFoundError:
+        app_version = "dev"
+
+    @app.context_processor
+    def _inject_version() -> dict:
+        return {"app_version": app_version}
 
     db.init_app(app)
     csrf.init_app(app)

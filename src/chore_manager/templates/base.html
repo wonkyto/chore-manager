@@ -19,6 +19,9 @@
       hx-headers='{"X-CSRFToken": "{{ csrf_token() }}"}'>
 <div id="fireworks-container" style="position:fixed;inset:0;pointer-events:none;z-index:9999;display:none;"></div>
 {% block content %}{% endblock %}
+<footer class="text-center text-xs text-slate-400 py-3">
+  v{{ app_version }}
+</footer>
 <script>
 let fireworksActive = false;
 
