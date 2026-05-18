@@ -365,6 +365,7 @@ def index():
     yesterday = today - timedelta(days=1)
     _apply_pending_penalties(config, yesterday)
     _apply_birthday_exemptions(config, yesterday)
+    _apply_birthday_exemptions(config, today)
     db.session.commit()
 
     birthday_people = {p.key for p in config.people if is_birthday(p, view_date)}

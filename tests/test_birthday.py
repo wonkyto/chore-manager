@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -164,6 +165,45 @@ def test_birthday_exemption_excludes_already_completed_chores(birthday_app):
         )
         # Only piano (10pts) awarded - dishes already done
         assert adj.points == 10
+
+
+# --- birthday exemption applied on the actual birthday ---
+
+
+def test_index_applies_birthday_exemption_for_today(birthday_app):
+    """Visiting the page on the birthday auto-skips that day's chores."""
+    birthday = date(2026, 4, 29)
+    from chore_manager import routes
+
+    class _FakeDT(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 4, 29, 9, 0, tzinfo=tz)
+
+    with patch.object(routes, "datetime", _FakeDT):
+        client = birthday_app.test_client()
+        resp = client.get("/")
+        assert resp.status_code == 200
+
+    with birthday_app.app_context():
+        skips = db.session.scalars(
+            db.select(ChoreSkip).where(
+                ChoreSkip.person_key == "bob", ChoreSkip.skip_date == birthday
+            )
+        ).all()
+        skipped_keys = {s.chore_key for s in skips}
+        assert "dishes" in skipped_keys
+        assert "piano" in skipped_keys
+
+        adj = db.session.scalar(
+            db.select(Adjustment).where(
+                Adjustment.person_key == "bob",
+                Adjustment.reason == "Birthday",
+                Adjustment.created_on == birthday,
+            )
+        )
+        assert adj is not None
+        assert adj.points == 15
 
 
 # --- streak preservation ---
