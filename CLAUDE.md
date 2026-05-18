@@ -223,6 +223,14 @@ You MUST adhere to the following principles in all writing, communication, and d
 
 After implementing a list of changes, perform a critical self-review pass before reporting completion, fixing any issues you find.
 
+## Project-Specific
+
+### Version Bumping
+After finishing a chunk of work (bug fix, feature, or noticeable change), bump the project version. Patch bump (`0.1.x`) for bug fixes and small improvements; minor bump (`0.x.0`) for new user-facing features. Update both files together, they must stay in lockstep:
+
+- `pyproject.toml` (the `version` field - read at runtime via `importlib.metadata` and shown in the page footer; also drives the Docker image tag via the Makefile)
+- `docker-compose.prod.yml` (the `image:` tag for the prod deployment)
+
 ## Supplementary Rules
 
 In addition to the above instructions:

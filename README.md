@@ -24,7 +24,7 @@ A household chore tracker for families. Each person gets a column showing their 
 - Configurable day rollover - set `day_rollover_hour` in `app.yaml` so late-night taps (e.g. before 4am) still land on the previous day
 - Per-person activity timeline at `/audit/<person_key>` showing completions, ad-hoc tasks, adjustments, redemptions, reassignments and skips. Audit events also stream to stdout, and to `log/audit.log` when `CHORE_AUDIT_LOG` is set
 - Achievements - bronze/silver/gold badges shown on the stats page for milestones (first chore, 100/500/1000 Chorecoins, 3/7/14-day streaks, perfect day, perfect Monday, perfect week, first reward); progress bars show how close locked badges are
-- Birthday exemptions - add a `birthday` (MM-DD) to any person; on their birthday chores are auto-skipped, Chorecoins they would have earned are awarded automatically, and the day counts toward their streak
+- Birthday exemptions - add a `birthday` (MM-DD) to any person; on their birthday scheduled chores are auto-skipped and they're awarded the chore's value (`points + penalty`, so a penalty-only chore still credits them), and the day counts toward their streak
 
 ## Setup
 

@@ -238,7 +238,7 @@ def _apply_birthday_exemptions(config: FamilyConfig, yesterday: date) -> None:
                             skip_date=yesterday,
                         )
                     )
-                points_to_award += chore.points
+                points_to_award += chore.points + chore.penalty
         db.session.add(
             Adjustment(
                 person_key=person.key,

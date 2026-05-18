@@ -167,6 +167,66 @@ def test_birthday_exemption_excludes_already_completed_chores(birthday_app):
         assert adj.points == 10
 
 
+# --- penalty is included in the birthday award ---
+
+PENALTY_CONFIG = """
+people:
+  - key: bob
+    name: Bob
+    role: child
+    colour: "#10b981"
+    birthday: "04-29"
+chores:
+  - key: homework
+    name: Homework
+    points: 0
+    penalty: 50
+    frequency: daily
+    assigned_to: [bob]
+  - key: kitchen_box
+    name: Empty kitchen storage box
+    points: 23
+    penalty: 10
+    frequency: daily
+    assigned_to: [bob]
+rewards: []
+"""
+
+
+@pytest.fixture
+def penalty_birthday_app(tmp_path: Path):
+    from chore_manager.app import create_app
+    cfg = tmp_path / "family.yaml"
+    cfg.write_text(PENALTY_CONFIG)
+    db_path = tmp_path / "test.db"
+    app = create_app(config_path=cfg, db_url=f"sqlite:///{db_path}")
+    app.config["TESTING"] = True
+    app.config["WTF_CSRF_ENABLED"] = False
+    return app
+
+
+def test_birthday_award_includes_penalty(penalty_birthday_app):
+    """A skipped chore on the birthday awards points + penalty (what doing it was worth)."""
+    from chore_manager.config import load_config
+    from chore_manager.routes import _apply_birthday_exemptions
+
+    birthday = date(2026, 4, 29)
+    with penalty_birthday_app.app_context():
+        cfg = load_config(Path(penalty_birthday_app.config["FAMILY_PATH"]))
+        _apply_birthday_exemptions(cfg, birthday)
+        db.session.commit()
+
+        adj = db.session.scalar(
+            db.select(Adjustment).where(
+                Adjustment.person_key == "bob",
+                Adjustment.reason == "Birthday",
+                Adjustment.created_on == birthday,
+            )
+        )
+        # homework: 0 + 50 = 50; kitchen_box: 23 + 10 = 33; total = 83
+        assert adj.points == 83
+
+
 # --- birthday exemption applied on the actual birthday ---
 
 

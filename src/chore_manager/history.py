@@ -6,7 +6,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from .config import FamilyConfig
-from .models import ChoreCompletion, Holiday
+from .models import ChoreCompletion, ChoreSkip, Holiday
 from .schedule import is_scheduled_on, previous_occurrence
 
 
@@ -15,6 +15,16 @@ def _completions_for(session: Session, chore_key: str, person_key: str) -> set[d
         select(ChoreCompletion.completed_on).where(
             ChoreCompletion.chore_key == chore_key,
             ChoreCompletion.person_key == person_key,
+        )
+    ).all()
+    return set(rows)
+
+
+def _skips_for(session: Session, chore_key: str, person_key: str) -> set[date]:
+    rows = session.scalars(
+        select(ChoreSkip.skip_date).where(
+            ChoreSkip.chore_key == chore_key,
+            ChoreSkip.person_key == person_key,
         )
     ).all()
     return set(rows)
@@ -46,21 +56,25 @@ def streak(
         return 0
 
     completed = _completions_for(session, chore_key, person_key)
+    skipped = _skips_for(session, chore_key, person_key)
     holidays = _holidays_for(session, person_key)
+
+    def _exempt(d: date) -> bool:
+        return _on_holiday(holidays, d) or d in skipped
 
     def prev_active(from_date: date) -> date | None:
         cursor = previous_occurrence(chore, from_date)
-        while cursor is not None and _on_holiday(holidays, cursor):
+        while cursor is not None and _exempt(cursor):
             cursor = previous_occurrence(chore, cursor - timedelta(days=1))
         return cursor
 
     # If today is a scheduled occurrence that hasn't been ticked off yet,
     # don't count it against the streak - start from the previous occurrence.
-    # Holiday days are also skipped (the chore was never expected).
+    # Holiday and skipped days are exempt (the chore wasn't expected).
     if (
         is_scheduled_on(chore, today)
         and today not in completed
-        and not _on_holiday(holidays, today)
+        and not _exempt(today)
     ):
         cursor = prev_active(today - timedelta(days=1))
     else:
@@ -86,9 +100,10 @@ def missed_count(
         return 0
 
     completed = _completions_for(session, chore_key, person_key)
+    skipped = _skips_for(session, chore_key, person_key)
     missed = 0
     for offset in range(1, window_days + 1):
         d = today - timedelta(days=offset)
-        if is_scheduled_on(chore, d) and d not in completed:
+        if is_scheduled_on(chore, d) and d not in completed and d not in skipped:
             missed += 1
     return missed

@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from chore_manager.config import FamilyConfig
 from chore_manager.db import db
 from chore_manager.history import missed_count, streak
-from chore_manager.models import ChoreCompletion
+from chore_manager.models import ChoreCompletion, ChoreSkip
 
 
 def _add(chore_key: str, when: date, points: int = 5) -> None:
@@ -58,6 +58,61 @@ def test_weekly_streak_across_scheduled_days(app):
         db.session.commit()
         cfg = app.config["FAMILY"]
         assert streak(db.session, cfg, "piano", "bob", today) == 3
+
+
+def test_streak_treats_skipped_day_as_transparent(app):
+    """A ChoreSkip row (e.g. from a birthday exemption) shouldn't break the streak."""
+    today = date(2026, 4, 30)
+    with app.app_context():
+        _add("dishes", today - timedelta(days=1))
+        _add("dishes", today - timedelta(days=2))
+        # Skip 3 days ago (e.g. birthday exemption)
+        db.session.add(
+            ChoreSkip(
+                chore_key="dishes",
+                person_key="bob",
+                skip_date=today - timedelta(days=3),
+            )
+        )
+        _add("dishes", today - timedelta(days=4))
+        _add("dishes", today - timedelta(days=5))
+        db.session.commit()
+        cfg = app.config["FAMILY"]
+        # 5 completions either side of the skip; the skip is transparent like a holiday.
+        assert streak(db.session, cfg, "dishes", "bob", today) == 4
+
+
+def test_streak_today_skipped_walks_back_normally(app):
+    """If today's scheduled chore is skipped, the streak walks back to the prior occurrence."""
+    today = date(2026, 4, 30)
+    with app.app_context():
+        for i in range(1, 4):
+            _add("dishes", today - timedelta(days=i))
+        db.session.add(
+            ChoreSkip(chore_key="dishes", person_key="bob", skip_date=today)
+        )
+        db.session.commit()
+        cfg = app.config["FAMILY"]
+        assert streak(db.session, cfg, "dishes", "bob", today) == 3
+
+
+def test_missed_count_excludes_skipped_days(app):
+    """A skipped scheduled day shouldn't count as missed."""
+    today = date(2026, 4, 30)
+    with app.app_context():
+        # 3 missed days + 1 skipped day in the window
+        db.session.add(
+            ChoreSkip(
+                chore_key="dishes",
+                person_key="bob",
+                skip_date=today - timedelta(days=2),
+            )
+        )
+        db.session.commit()
+        cfg = app.config["FAMILY"]
+        # Without the skip, all 30 prior days would be missed.
+        # With it, 29 missed.
+        assert missed_count(db.session, cfg, "dishes", "bob", today) == 29
 
 
 def test_weekly_streak_skips_missing_scheduled_day(app):
