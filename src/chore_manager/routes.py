@@ -143,53 +143,65 @@ def _day_label(view_date: date, today: date) -> str | None:
     return None
 
 
+def _maybe_apply_penalty(chore, person_key: str, on_date: date) -> None:
+    """Create a penalty for (chore, person, on_date) if rollover-time conditions still hold.
+
+    Used by both the nightly rollover and by retroactive un-tick/un-skip paths to keep
+    penalty state consistent. Only acts on past dates; today's penalties are deferred
+    until the next rollover."""
+    if on_date >= _today():
+        return
+    if not chore.penalty or chore.claim_first:
+        return
+    if person_key not in chore.assigned_to:
+        return
+    app_cfg = _load_app_cfg()
+    if app_cfg.penalty_start_date and on_date < app_cfg.penalty_start_date:
+        return
+    if not is_scheduled_on(chore, on_date):
+        return
+    if db.session.scalar(
+        select(ChorePenalty).where(
+            ChorePenalty.chore_key == chore.key,
+            ChorePenalty.person_key == person_key,
+            ChorePenalty.penalty_date == on_date,
+        )
+    ):
+        return
+    if db.session.scalar(
+        select(ChoreCompletion).where(
+            ChoreCompletion.chore_key == chore.key,
+            ChoreCompletion.person_key == person_key,
+            ChoreCompletion.completed_on == on_date,
+        )
+    ):
+        return
+    if db.session.scalar(
+        select(ChoreSkip).where(
+            ChoreSkip.chore_key == chore.key,
+            ChoreSkip.person_key == person_key,
+            ChoreSkip.skip_date == on_date,
+        )
+    ):
+        return
+    db.session.add(
+        ChorePenalty(
+            chore_key=chore.key,
+            person_key=person_key,
+            penalty_date=on_date,
+            points_deducted=chore.penalty,
+        )
+    )
+    audit_log(f"{person_key} penalised {chore.key} on {on_date.isoformat()} (-{chore.penalty})")
+
+
 def _apply_pending_penalties(config: FamilyConfig, yesterday: date) -> None:
     """Apply penalties for incomplete penalty-bearing chores from yesterday."""
-    app_cfg = _load_app_cfg()
-    if app_cfg.penalty_start_date and yesterday < app_cfg.penalty_start_date:
-        return
     for chore in config.chores:
         if not chore.penalty or chore.claim_first:
             continue
-        if not is_scheduled_on(chore, yesterday):
-            continue
         for person_key in chore.assigned_to:
-            existing = db.session.scalar(
-                select(ChorePenalty).where(
-                    ChorePenalty.chore_key == chore.key,
-                    ChorePenalty.person_key == person_key,
-                    ChorePenalty.penalty_date == yesterday,
-                )
-            )
-            if existing:
-                continue
-            completed = db.session.scalar(
-                select(ChoreCompletion).where(
-                    ChoreCompletion.chore_key == chore.key,
-                    ChoreCompletion.person_key == person_key,
-                    ChoreCompletion.completed_on == yesterday,
-                )
-            )
-            if completed:
-                continue
-            skipped = db.session.scalar(
-                select(ChoreSkip).where(
-                    ChoreSkip.chore_key == chore.key,
-                    ChoreSkip.person_key == person_key,
-                    ChoreSkip.skip_date == yesterday,
-                )
-            )
-            if skipped:
-                continue
-            db.session.add(
-                ChorePenalty(
-                    chore_key=chore.key,
-                    person_key=person_key,
-                    penalty_date=yesterday,
-                    points_deducted=chore.penalty,
-                )
-            )
-            audit_log(f"{person_key} penalised {chore.key} on {yesterday.isoformat()} (-{chore.penalty})")
+            _maybe_apply_penalty(chore, person_key, yesterday)
 
 
 _BIRTHDAY_REASON = "Birthday"
@@ -624,6 +636,7 @@ def toggle(chore_key: str, person_key: str):
         db.session.delete(existing)
         just_done = False
         audit_log(f"{person_key} unticked {chore_key} on {toggle_date.isoformat()}")
+        _maybe_apply_penalty(chore, person_key, toggle_date)
     else:
         db.session.add(
             ChoreCompletion(
@@ -633,6 +646,15 @@ def toggle(chore_key: str, person_key: str):
                 points_awarded=chore.points,
             )
         )
+        penalty = db.session.scalar(
+            select(ChorePenalty).where(
+                ChorePenalty.chore_key == chore_key,
+                ChorePenalty.person_key == person_key,
+                ChorePenalty.penalty_date == toggle_date,
+            )
+        )
+        if penalty:
+            db.session.delete(penalty)
         just_done = True
         audit_log(
             f"{person_key} completed {chore_key} (+{chore.points}) on {toggle_date.isoformat()}"
@@ -789,6 +811,7 @@ def unskip(chore_key: str, person_key: str):
         )
         if existing:
             db.session.delete(existing)
+        _maybe_apply_penalty(chore, pk, skip_date)
     db.session.commit()
     audit_log(f"{person_key} unskipped {chore_key} on {skip_date.isoformat()}")
     item = _build_item(person_key, chore_key, skip_date, today)
