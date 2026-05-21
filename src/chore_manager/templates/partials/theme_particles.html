@@ -1,0 +1,8 @@
+{% set theme_glyph = {
+  'christmas': '❄',
+  'halloween': '\U0001F383',
+  'easter':    '\U0001F338',
+} %}
+<div class="theme-particles theme-{{ active_theme }}" aria-hidden="true">
+  {% for _ in range(18) %}<span>{{ theme_glyph[active_theme] }}</span>{% endfor %}
+</div>

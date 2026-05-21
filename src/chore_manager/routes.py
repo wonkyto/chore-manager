@@ -44,6 +44,7 @@ from .models import (
     Redemption,
 )
 from .schedule import is_scheduled_on
+from .theme import active_theme
 from .stats import (
     best_day_of_week,
     completion_rate_30d,
@@ -86,6 +87,7 @@ def inject_app_config() -> dict:
         "pin_required": app_cfg.pin_required,
         "pin_unlocked": _pin_unlocked_for(app_cfg),
         "pin_remaining": _pin_remaining(app_cfg),
+        "active_theme": active_theme(_today(), app_cfg.enabled_themes),
     }
 
 

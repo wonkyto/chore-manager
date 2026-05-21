@@ -12,11 +12,15 @@
 <meta name="apple-mobile-web-app-title" content="{{ app_config.app_name }}">
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='themes.css') }}">
 <script src="{{ url_for('static', filename='htmx.min.js') }}" defer></script>
 <script src="{{ url_for('static', filename='canvas-confetti.min.js') }}" defer></script>
 </head>
-<body class="bg-slate-50 text-slate-900 min-h-screen"
+<body class="bg-slate-50 text-slate-900 min-h-screen{% if active_theme %} theme-{{ active_theme }}{% endif %}"
       hx-headers='{"X-CSRFToken": "{{ csrf_token() }}"}'>
+{% if active_theme %}
+{% include 'partials/theme_particles.html' %}
+{% endif %}
 <div id="fireworks-container" style="position:fixed;inset:0;pointer-events:none;z-index:9999;display:none;"></div>
 {% block content %}{% endblock %}
 <footer class="text-center text-xs text-slate-400 py-3">

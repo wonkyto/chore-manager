@@ -60,11 +60,11 @@ Something like
 - DONE **Audit log / activity timeline** - a per-person page (or section on stats) showing completions, adjustments, redemptions, reassignments and skips in chronological order. The data is already stored across those tables; this is mostly query + template work.
   - in addition this should write to standard out, and have the ability to send to a custom log file on the filesystem (just audit events), called log/audit.log.
 - DONE **Achievements / badges** - milestones like first 100 Chorecoins, 7-day streak, perfect week, all-chores-done-on-a-Monday, etc. Compute on demand from existing data; show as small icons on the stats page (and maybe a brief "Achievement unlocked!" animation on the day view when one trips).
-- Documentation on how this could be uplifted to support an external database like postgres. As we use an ORM, this should be relatively simple to change, perhaps even have this as a configurable option?
+- DONE **Documentation on how this could be uplifted to support an external database like postgres.** As we use an ORM, this should be relatively simple to change, perhaps even have this as a configurable option? Covered in README.md "Migrating to PostgreSQL" - `CHORE_DB_URL` already switches dialect, SQLite-specific tuning auto-skips, and the doc lists the remaining steps (driver dep, Alembic for migrations, compose changes).
+- Special theaming of UI for special holidays like Easter, Halloween and Christmas.
 
 ## Maybe / parked
 
-- Special theaming of UI for special holidays like Easter, Halloween and Christmas.
 - **Saving for a reward / wishlist** - kid picks one reward to save toward; their column shows a progress bar to the cost. Turns Chorecoins into a goal rather than a generic balance. Small schema (`saving_for_key` per person), modest UI. Decide later whether this fits how the family actually uses redemptions.
 - **True time-based chore rotation** - the duplicate-chore-per-person approach covers static day-of-week splits. Only add proper rotation (alternating weeks, monthly handover, n-way rotation) if the duplicate approach starts becoming painful (stats split across keys, edits needed in multiple places, anchor_date juggling).
 

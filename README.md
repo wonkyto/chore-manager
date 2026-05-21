@@ -25,6 +25,7 @@ A household chore tracker for families. Each person gets a column showing their 
 - Per-person activity timeline at `/audit/<person_key>` showing completions, ad-hoc tasks, adjustments, redemptions, reassignments and skips. Audit events also stream to stdout, and to `log/audit.log` when `CHORE_AUDIT_LOG` is set
 - Achievements - bronze/silver/gold badges shown on the stats page for milestones (first chore, 100/500/1000 Chorecoins, 3/7/14-day streaks, perfect day, perfect Monday, perfect week, first reward); progress bars show how close locked badges are
 - Birthday exemptions - add a `birthday` (MM-DD) to any person; on their birthday scheduled chores are auto-skipped and they're awarded the chore's value (`points + penalty`, so a penalty-only chore still credits them), and the day counts toward their streak
+- Seasonal themes - opt-in banner accent, tinted background, and falling-particle overlay for Easter (computed via Meeus/Jones/Butcher), Halloween (Oct 25-31) and Christmas (Dec 1-26). Enable per theme in `app.yaml`
 
 ## Setup
 
@@ -59,7 +60,10 @@ parent_pin: "1234"           # plain PIN, omit to disable PIN entirely
 pin_timeout_seconds: 60      # how long the PIN unlock lasts
 day_rollover_hour: 0         # hour (0-23) when "today" rolls. e.g. 4 means 0-4am still counts as the previous day
 penalty_start_date: "2026-01-01"  # penalties never applied before this date; set to your go-live date
+enabled_themes: [easter, halloween, christmas]  # any subset; omit for no themes
 ```
+
+`enabled_themes` opts each seasonal theme in independently. When the current date falls inside an enabled theme's window, the app applies a banner accent, a tinted background, and a falling-particle overlay. Windows are hardcoded: `christmas` Dec 1-26, `halloween` Oct 25-31, `easter` Good Friday through Easter Monday (Easter Sunday is computed via Meeus/Jones/Butcher). Omit the key, or leave the list empty, to keep the default styling year-round.
 
 `parent_pin_hash` takes precedence over `parent_pin` if both are present. To generate a hash:
 

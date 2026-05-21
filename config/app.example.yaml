@@ -17,3 +17,9 @@ timezone: Australia/Sydney      # any tz database name, e.g. Europe/London, Amer
 # Penalties are never applied before this date. Set this to your go-live date so a fresh
 # deployment doesn't backfill penalties for days that predate the app.
 # penalty_start_date: "2026-01-01"
+
+# Seasonal UI themes. Enable any combination; the active one shows a banner accent,
+# tinted background, and a falling-particle overlay during its window.
+# Windows: christmas (Dec 1 - Dec 26), halloween (Oct 25 - Oct 31),
+# easter (Good Friday through Easter Monday, computed via Meeus/Jones/Butcher).
+# enabled_themes: [easter, halloween, christmas]

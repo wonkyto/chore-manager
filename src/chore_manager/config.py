@@ -10,6 +10,8 @@ import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator
 from werkzeug.security import check_password_hash
 
+from .theme import THEMES
+
 
 class Role(StrEnum):
     parent = "parent"
@@ -159,6 +161,17 @@ class AppConfig(BaseModel):
     pin_timeout_seconds: int = 60
     day_rollover_hour: int = Field(default=0, ge=0, le=23)
     penalty_start_date: date | None = None
+    enabled_themes: list[str] = Field(default_factory=list)
+
+    @field_validator("enabled_themes")
+    @classmethod
+    def known_theme_keys(cls, v: list[str]) -> list[str]:
+        unknown = set(v) - set(THEMES)
+        if unknown:
+            raise ValueError(
+                f"unknown theme(s) {sorted(unknown)}; valid options: {list(THEMES)}"
+            )
+        return v
 
     def verify_pin(self, candidate: str) -> bool:
         if self.parent_pin_hash:

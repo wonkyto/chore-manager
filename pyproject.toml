@@ -1,6 +1,6 @@
 [project]
 name = "chore-manager"
-version = "0.1.4"
+version = "0.2.0"
 description = "Family chore tracker with points and rewards"
 requires-python = ">=3.12"
 dependencies = [
