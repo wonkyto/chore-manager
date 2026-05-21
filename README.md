@@ -103,7 +103,7 @@ rewards:
     cost: 20
 ```
 
-The `points` field sets how many Chorecoins the chore is worth. Add `penalty` to deduct Chorecoins the following morning if the chore wasn't completed:
+The `points` field sets how many Chorecoins the chore is worth. Add `penalty` to deduct Chorecoins the following morning if the chore wasn't completed. Penalties track the chore's current state: retroactively ticking or skipping a missed day clears the deduction, and un-ticking or un-skipping it reinstates the penalty.
 
 ```yaml
   - key: school_bag
